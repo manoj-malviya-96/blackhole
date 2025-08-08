@@ -1,7 +1,5 @@
-#version 430 core
+#version 410 core
 in vec2 vUV;
 layout(location=0) out vec4 FragColor;
 uniform sampler2D uTex;
-void main(){
-    FragColor = texture(uTex, vUV);
-}
+void main(){ FragColor = texture(uTex, vUV); }

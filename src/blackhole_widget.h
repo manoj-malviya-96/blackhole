@@ -1,11 +1,11 @@
 #pragma once
-#include <QOpenGLWidget>
+
+#include <QMatrix4x4>
 #include <QOpenGLFunctions_4_3_Core>
 #include <QOpenGLShaderProgram>
-#include <QMatrix4x4>
-#include <QVector>
+#include <QOpenGLWidget>
 #include <QTimer>
-#include <QImage>
+#include <QVector>
 #include <vector>
 
 class BlackHoleWidget : public QOpenGLWidget, protected QOpenGLFunctions_4_3_Core {
@@ -33,19 +33,19 @@ protected:
 private:
     // Scene data
     struct ObjectData {
-        QVector4D posRadius;   // xyz position (meters), w = radius (meters)
-        QVector4D color;       // rgb,a
-        double    mass;        // kilograms
-        QVector3D velocity;    // not used here
+        QVector4D posRadius; // xyz position (meters), w = radius (meters)
+        QVector4D color;     // rgb,a
+        double mass;         // kilograms
+        QVector3D velocity;  // not used here
     };
 
     // Camera
     struct Camera {
         QVector3D target{0.f, 0.f, 0.f};
-        float radius    = 6.34e10f;
+        float radius = 6.34e10f;
         float minRadius = 1e10f;
         float maxRadius = 1e12f;
-        float azimuth   = 0.0f;
+        float azimuth = 0.0f;
         float elevation = 1.57079632679f; // ~pi/2
         float orbitSpeed = 0.01f;
         double zoomSpeed = 2.5e10;
@@ -93,7 +93,7 @@ private:
 
     // UBOs
     GLuint cameraUBO_ = 0;
-    GLuint diskUBO_   = 0;
+    GLuint diskUBO_ = 0;
     GLuint objectsUBO_ = 0;
 
     // Fullscreen quad + texture

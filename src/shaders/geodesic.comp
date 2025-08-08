@@ -3,7 +3,6 @@ layout(local_size_x = 8, local_size_y = 8) in;
 
 layout(rgba8, binding = 0) writeonly uniform image2D uOut;
 
-// Camera UBO (std140)
 layout(std140, binding = 1) uniform CameraBlock {
     mat4 uView;
     mat4 uProj;
@@ -11,17 +10,14 @@ layout(std140, binding = 1) uniform CameraBlock {
     vec4 uCamPos;
 };
 
-// Disk parameters (r1, r2, density, pad)
 layout(std140, binding = 2) uniform DiskBlock {
     vec4 uDisk; // x=r1, y=r2, z=density
 };
 
-// Objects (reserved; not used here)
 layout(std140, binding = 3) uniform ObjectsBlock {
-// struct layout placeholder – prefer SSBO for real scenes
+// reserved
 } objs;
 
-// Simple helpers
 bool intersectSphere(vec3 ro, vec3 rd, vec3 center, float radius, out float tHit) {
     vec3 oc = ro - center;
     float b = dot(oc, rd);
@@ -48,7 +44,6 @@ void main() {
     vec2 uv  = (vec2(gid) + 0.5) / vec2(size);
     vec2 ndc = uv * 2.0 - 1.0;
 
-    // Reconstruct world ray from camera matrices
     mat4 invProj = inverse(uProj);
     mat4 invView = inverse(uView);
     vec4 clip = vec4(ndc, 1.0, 1.0);
@@ -58,16 +53,13 @@ void main() {
     vec3 rd = normalize((invView * vec4(rdView, 0.0)).xyz);
     vec3 ro = uCamPos.xyz;
 
-    // Scene params
-    float r_s = uDisk.x / 2.2; // we set r1=2.2*r_s in C++, so invert here if needed
+    float r_s = uDisk.x / 2.2; // since r1 = 2.2 * r_s in C++
     float r1  = uDisk.x;
     float r2  = uDisk.y;
 
-    // Black hole horizon test (sphere at origin with radius r_s)
     float tHit;
     bool hitBH = intersectSphere(ro, rd, vec3(0.0), r_s, tHit);
 
-    // Disk intersection with plane y=0, band [r1,r2] in xz
     float tPlane;
     bool hitPlane = intersectPlaneY(ro, rd, 0.0, tPlane);
     bool inDisk = false;
@@ -80,17 +72,14 @@ void main() {
 
     vec3 col = vec3(0.0);
     if (hitBH && (!hitPlane || tHit < tPlane)) {
-        // Inside event horizon silhouette -> black
         col = vec3(0.0);
     } else if (hitPlane && inDisk) {
-        // Simple disk shading: radial falloff + slight azimuth tint
         float R = clamp(length(pDisk.xz), r1, r2);
         float a = atan(pDisk.z, pDisk.x);
         float v = 1.0 - smoothstep(r1, r2, R);
         vec3 tint = vec3(1.0, 0.9, 0.7);
         col = v * tint * (0.8 + 0.2 * sin(5.0*a));
     } else {
-        // Background with vignette
         float r = length(ndc);
         float vignette = smoothstep(1.2, 0.2, r);
         col = vec3(0.02) * vignette;

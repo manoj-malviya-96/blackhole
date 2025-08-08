@@ -22,6 +22,10 @@ target_link_libraries(blackhole_exe PRIVATE
         Qt6::OpenGLWidgets
 )
 
+target_sources(blackhole_exe PRIVATE
+        src/resources.qrc
+)
+
 if(APPLE)
     set_target_properties(blackhole_exe PROPERTIES MACOSX_BUNDLE TRUE)
 endif()

@@ -1,15 +1,126 @@
 #include "blackhole_widget.h"
-#include <QMouseEvent>
-#include <QWheelEvent>
-#include <QKeyEvent>
-#include <QPainter>
-#include <QOpenGLContext>
+
 #include <cmath>
+#include <QKeyEvent>
+#include <QMouseEvent>
+#include <QOpenGLContext>
+#include <QWheelEvent>
 
 // Guard for headers that don't define this (e.g., macOS < 4.2 headers)
 #ifndef GL_SHADER_IMAGE_ACCESS_BARRIER_BIT
 #define GL_SHADER_IMAGE_ACCESS_BARRIER_BIT 0x00000020
 #endif
+
+// Minimal fallback shader sources in case Qt resources are not bundled.
+// Use GLSL 410 for VS/FS (macOS compatible) and 430 for compute (when available).
+static const char* kGridVertSrc = R"(#version 410 core
+layout(location=0) in vec3 aPos;
+uniform mat4 viewProj;
+void main(){ gl_Position = viewProj * vec4(aPos,1.0); }
+)";
+
+static const char* kGridFragSrc = R"(#version 410 core
+out vec4 FragColor;
+void main(){ FragColor = vec4(0.2,0.6,1.0,0.35); }
+)";
+
+static const char* kQuadVertSrc = R"(#version 410 core
+layout(location=0) in vec2 aPos;
+layout(location=1) in vec2 aUV;
+out vec2 vUV;
+void main(){ vUV=aUV; gl_Position=vec4(aPos,0.0,1.0); }
+)";
+
+static const char* kQuadFragSrc = R"(#version 410 core
+in vec2 vUV;
+layout(location=0) out vec4 FragColor;
+uniform sampler2D uTex;
+void main(){ FragColor = texture(uTex, vUV); }
+)";
+
+// Fallback fragment lensing shader (used on macOS or when compute unavailable).
+static const char* kLensFragSrc = R"(#version 410 core
+out vec4 FragColor;
+
+layout(std140, binding = 1) uniform CameraBlock {
+    mat4 uView;
+    mat4 uProj;
+    mat4 uViewProj;
+    vec4 uCamPos;
+};
+
+layout(std140, binding = 2) uniform DiskBlock {
+    vec4 uDisk; // x=r1, y=r2, z=density
+};
+
+in vec2 vUV;
+
+bool intersectSphere(vec3 ro, vec3 rd, vec3 center, float radius, out float tHit) {
+    vec3 oc = ro - center;
+    float b = dot(oc, rd);
+    float c = dot(oc, oc) - radius*radius;
+    float disc = b*b - c;
+    if (disc < 0.0) return false;
+    float s = sqrt(disc);
+    float t0 = -b - s;
+    float t1 = -b + s;
+    tHit = (t0 > 0.0) ? t0 : ((t1 > 0.0) ? t1 : -1.0);
+    return tHit > 0.0;
+}
+
+bool intersectPlaneY(vec3 ro, vec3 rd, float y, out float t) {
+    if (abs(rd.y) < 1e-6) return false;
+    t = (y - ro.y) / rd.y;
+    return t > 0.0;
+}
+
+void main() {
+    vec2 ndc = vUV * 2.0 - 1.0;
+
+    mat4 invProj = inverse(uProj);
+    mat4 invView = inverse(uView);
+    vec4 clip = vec4(ndc, 1.0, 1.0);
+    vec4 viewPos = invProj * clip;
+    viewPos /= viewPos.w;
+    vec3 rdView = normalize(viewPos.xyz);
+    vec3 rd = normalize((invView * vec4(rdView, 0.0)).xyz);
+    vec3 ro = uCamPos.xyz;
+
+    float r_s = uDisk.x / 2.2;
+    float r1  = uDisk.x;
+    float r2  = uDisk.y;
+
+    float tHit;
+    bool hitBH = intersectSphere(ro, rd, vec3(0.0), r_s, tHit);
+
+    float tPlane;
+    bool hitPlane = intersectPlaneY(ro, rd, 0.0, tPlane);
+    bool inDisk = false;
+    vec3 pDisk = vec3(0.0);
+    if (hitPlane) {
+        pDisk = ro + tPlane * rd;
+        float R = length(pDisk.xz);
+        inDisk = (R >= r1 && R <= r2);
+    }
+
+    vec3 col = vec3(0.0);
+    if (hitBH && (!hitPlane || tHit < tPlane)) {
+        col = vec3(0.0);
+    } else if (hitPlane && inDisk) {
+        float R = clamp(length(pDisk.xz), r1, r2);
+        float a = atan(pDisk.z, pDisk.x);
+        float v = 1.0 - smoothstep(r1, r2, R);
+        vec3 tint = vec3(1.0, 0.9, 0.7);
+        col = v * tint * (0.8 + 0.2 * sin(5.0*a));
+    } else {
+        float r = length(ndc);
+        float vignette = smoothstep(1.2, 0.2, r);
+        col = vec3(0.02) * vignette;
+    }
+
+    FragColor = vec4(col, 1.0);
+}
+)";
 
 BlackHoleWidget::BlackHoleWidget(QWidget* parent) : QOpenGLWidget(parent) {
     setFocusPolicy(Qt::StrongFocus);
@@ -17,10 +128,10 @@ BlackHoleWidget::BlackHoleWidget(QWidget* parent) : QOpenGLWidget(parent) {
     // Single BH at origin (mass ~ 4.3e6 solar masses)
     const double solar = 1.98847e30;
     objects_.push_back({
-        QVector4D(0,0,0, 5e10f),      // pos + radius
-        QVector4D(1,1,1,1),           // color
-        4.3e6 * solar,                // mass
-        QVector3D(0,0,0)              // velocity (unused)
+        QVector4D(0, 0, 0, 5e10f), // pos + radius
+        QVector4D(1, 1, 1, 1),     // color
+        4.3e6 * solar,             // mass
+        QVector3D(0, 0, 0)         // velocity (unused)
     });
 
     // Drive frames
@@ -50,34 +161,56 @@ void BlackHoleWidget::initializeGL() {
     const bool hasARB = ctx->hasExtension(QByteArrayLiteral("GL_ARB_compute_shader"));
     useCompute_ = verOK || hasARB;
 
-    // Compile shaders (from Qt resource)
-    if (!gridProg_.addShaderFromSourceFile(QOpenGLShader::Vertex,  ":/shaders/grid.vert"))  qWarning() << gridProg_.log();
-    if (!gridProg_.addShaderFromSourceFile(QOpenGLShader::Fragment,":/shaders/grid.frag"))  qWarning() << gridProg_.log();
-    if (!gridProg_.link()) qWarning() << gridProg_.log();
+    // Helper to load shader from resource, falling back to embedded code
+    auto addFromResOrCode =
+        [](QOpenGLShaderProgram& prog, QOpenGLShader::ShaderType type, const char* resPath, const char* fallbackSrc
+        ) -> bool {
+        if (prog.addShaderFromSourceFile(type, resPath))
+            return true;
+        return prog.addShaderFromSourceCode(type, fallbackSrc);
+    };
 
-    if (!quadProg_.addShaderFromSourceFile(QOpenGLShader::Vertex,  ":/shaders/quad.vert"))  qWarning() << quadProg_.log();
-    if (!quadProg_.addShaderFromSourceFile(QOpenGLShader::Fragment,":/shaders/quad.frag"))  qWarning() << quadProg_.log();
-    if (!quadProg_.link()) qWarning() << quadProg_.log();
+    // Compile grid program
+    bool ok = addFromResOrCode(gridProg_, QOpenGLShader::Vertex, ":/shaders/grid.vert", kGridVertSrc);
+    ok = addFromResOrCode(gridProg_, QOpenGLShader::Fragment, ":/shaders/grid.frag", kGridFragSrc) && ok;
+    if (!gridProg_.link() || !ok) {
+        qWarning() << "Failed to build grid program:" << gridProg_.log();
+    }
+
+    // Compile quad program
+    ok = addFromResOrCode(quadProg_, QOpenGLShader::Vertex, ":/shaders/quad.vert", kQuadVertSrc);
+    ok = addFromResOrCode(quadProg_, QOpenGLShader::Fragment, ":/shaders/quad.frag", kQuadFragSrc) && ok;
+    if (!quadProg_.link() || !ok) {
+        qWarning() << "Failed to build quad program:" << quadProg_.log();
+    }
 
     if (useCompute_) {
-        if (!computeProg_.addShaderFromSourceFile(QOpenGLShader::Compute,":/shaders/geodesic.comp")) qWarning() << computeProg_.log();
-        if (!computeProg_.link()) qWarning() << computeProg_.log();
-    } else {
-        // Fallback lens program (fragment shader does the work)
-        if (!lensProg_.addShaderFromSourceFile(QOpenGLShader::Vertex,  ":/shaders/quad.vert"))  qWarning() << lensProg_.log();
-        if (!lensProg_.addShaderFromSourceFile(QOpenGLShader::Fragment,":/shaders/lens.frag"))  qWarning() << lensProg_.log();
-        if (!lensProg_.link()) qWarning() << lensProg_.log();
+        // Compute shader is only available when GL 4.3+/ARB_compute_shader
+        if (!computeProg_.addShaderFromSourceFile(QOpenGLShader::Compute, ":/shaders/geodesic.comp")
+            || !computeProg_.link()) {
+            qWarning() << "Compute shader missing or failed to link; falling back to fragment lensing.";
+            useCompute_ = false;
+        }
+    }
+
+    if (!useCompute_) {
+        // Fallback lens program (fragment shader does the lensing)
+        ok = addFromResOrCode(lensProg_, QOpenGLShader::Vertex, ":/shaders/quad.vert", kQuadVertSrc);
+        ok = addFromResOrCode(lensProg_, QOpenGLShader::Fragment, ":/shaders/lens.frag", kLensFragSrc) && ok;
+        if (!lensProg_.link() || !ok) {
+            qWarning() << "Failed to build lens fallback program:" << lensProg_.log();
+        }
     }
 
     // UBOs
     glGenBuffers(1, &cameraUBO_);
     glBindBuffer(GL_UNIFORM_BUFFER, cameraUBO_);
-    glBufferData(GL_UNIFORM_BUFFER, sizeof(QMatrix4x4)*3 + sizeof(QVector4D), nullptr, GL_DYNAMIC_DRAW);
+    glBufferData(GL_UNIFORM_BUFFER, sizeof(QMatrix4x4) * 3 + sizeof(QVector4D), nullptr, GL_DYNAMIC_DRAW);
     glBindBufferBase(GL_UNIFORM_BUFFER, 1, cameraUBO_);
 
     glGenBuffers(1, &diskUBO_);
     glBindBuffer(GL_UNIFORM_BUFFER, diskUBO_);
-    glBufferData(GL_UNIFORM_BUFFER, sizeof(float)*4, nullptr, GL_DYNAMIC_DRAW);
+    glBufferData(GL_UNIFORM_BUFFER, sizeof(float) * 4, nullptr, GL_DYNAMIC_DRAW);
     glBindBufferBase(GL_UNIFORM_BUFFER, 2, diskUBO_);
 
     glGenBuffers(1, &objectsUBO_);
@@ -109,7 +242,7 @@ void BlackHoleWidget::resizeGL(int w, int h) {
 }
 
 void BlackHoleWidget::paintGL() {
-    glClearColor(0,0,0,1);
+    glClearColor(0, 0, 0, 1);
     glClear(GL_COLOR_BUFFER_BIT);
 
     updateCameraMatrices();
@@ -143,10 +276,11 @@ void BlackHoleWidget::mousePressEvent(QMouseEvent* e) {
 }
 
 void BlackHoleWidget::mouseMoveEvent(QMouseEvent* e) {
-    if (!cam_.dragging) return;
+    if (!cam_.dragging)
+        return;
     const QPointF pos = e->position();
     const QPointF d = pos - cam_.lastPos;
-    cam_.azimuth   += float(d.x()) * cam_.orbitSpeed;
+    cam_.azimuth += float(d.x()) * cam_.orbitSpeed;
     cam_.elevation -= float(d.y()) * cam_.orbitSpeed;
     cam_.elevation = std::clamp(cam_.elevation, 0.01f, 3.1315926535f);
     cam_.lastPos = pos;
@@ -171,24 +305,42 @@ void BlackHoleWidget::wheelEvent(QWheelEvent* e) {
 
 void BlackHoleWidget::keyPressEvent(QKeyEvent* e) {
     switch (e->key()) {
-    case Qt::Key_Space: paused_ = !paused_; break;
-    case Qt::Key_R:
-        cam_.radius = 6.34e10f; cam_.azimuth = 0.0f; cam_.elevation = 1.5707963f;
+    case Qt::Key_Space:
+        paused_ = !paused_;
         break;
-    case Qt::Key_Escape: window()->close(); break;
-    default: QOpenGLWidget::keyPressEvent(e);
+    case Qt::Key_R:
+        cam_.radius = 6.34e10f;
+        cam_.azimuth = 0.0f;
+        cam_.elevation = 1.5707963f;
+        break;
+    case Qt::Key_Escape:
+        window()->close();
+        break;
+    default:
+        QOpenGLWidget::keyPressEvent(e);
     }
 }
 
 void BlackHoleWidget::createQuad() {
-    const float verts[] = {
-        // pos      // uv
-        -1.f, -1.f, 0.f, 0.f,
-         1.f, -1.f, 1.f, 0.f,
-         1.f,  1.f, 1.f, 1.f,
-        -1.f,  1.f, 0.f, 1.f
+    const float verts[] = {// pos      // uv
+                           -1.f,
+                           -1.f,
+                           0.f,
+                           0.f,
+                           1.f,
+                           -1.f,
+                           1.f,
+                           0.f,
+                           1.f,
+                           1.f,
+                           1.f,
+                           1.f,
+                           -1.f,
+                           1.f,
+                           0.f,
+                           1.f
     };
-    const GLuint idx[] = {0,1,2, 0,2,3};
+    const GLuint idx[] = {0, 1, 2, 0, 2, 3};
 
     glGenVertexArrays(1, &quadVAO_);
     glGenBuffers(1, &quadVBO_);
@@ -203,37 +355,52 @@ void BlackHoleWidget::createQuad() {
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(idx), idx, GL_STATIC_DRAW);
 
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4*sizeof(float), (void*)0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
 
     glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4*sizeof(float), (void*)(2*sizeof(float)));
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
 
     glBindVertexArray(0);
 }
 
 void BlackHoleWidget::destroyGL() {
-    if (gridEBO_) glDeleteBuffers(1, &gridEBO_), gridEBO_=0;
-    if (gridVBO_) glDeleteBuffers(1, &gridVBO_), gridVBO_=0;
-    if (gridVAO_) glDeleteVertexArrays(1, &gridVAO_), gridVAO_=0;
+    if (gridEBO_)
+        glDeleteBuffers(1, &gridEBO_), gridEBO_ = 0;
+    if (gridVBO_)
+        glDeleteBuffers(1, &gridVBO_), gridVBO_ = 0;
+    if (gridVAO_)
+        glDeleteVertexArrays(1, &gridVAO_), gridVAO_ = 0;
 
-    if (quadEBO_) glDeleteBuffers(1, &quadEBO_), quadEBO_=0;
-    if (quadVBO_) glDeleteBuffers(1, &quadVBO_), quadVBO_=0;
-    if (quadVAO_) glDeleteVertexArrays(1, &quadVAO_), quadVAO_=0;
+    if (quadEBO_)
+        glDeleteBuffers(1, &quadEBO_), quadEBO_ = 0;
+    if (quadVBO_)
+        glDeleteBuffers(1, &quadVBO_), quadVBO_ = 0;
+    if (quadVAO_)
+        glDeleteVertexArrays(1, &quadVAO_), quadVAO_ = 0;
 
-    if (outputTex_) glDeleteTextures(1, &outputTex_), outputTex_=0;
+    if (outputTex_)
+        glDeleteTextures(1, &outputTex_), outputTex_ = 0;
 
-    if (cameraUBO_) glDeleteBuffers(1, &cameraUBO_), cameraUBO_=0;
-    if (diskUBO_) glDeleteBuffers(1, &diskUBO_), diskUBO_=0;
-    if (objectsUBO_) glDeleteBuffers(1, &objectsUBO_), objectsUBO_=0;
+    if (cameraUBO_)
+        glDeleteBuffers(1, &cameraUBO_), cameraUBO_ = 0;
+    if (diskUBO_)
+        glDeleteBuffers(1, &diskUBO_), diskUBO_ = 0;
+    if (objectsUBO_)
+        glDeleteBuffers(1, &objectsUBO_), objectsUBO_ = 0;
 
-    if (gridProg_.isLinked()) gridProg_.removeAllShaders();
-    if (quadProg_.isLinked()) quadProg_.removeAllShaders();
-    if (computeProg_.isLinked()) computeProg_.removeAllShaders();
-    if (lensProg_.isLinked()) lensProg_.removeAllShaders();
+    if (gridProg_.isLinked())
+        gridProg_.removeAllShaders();
+    if (quadProg_.isLinked())
+        quadProg_.removeAllShaders();
+    if (computeProg_.isLinked())
+        computeProg_.removeAllShaders();
+    if (lensProg_.isLinked())
+        lensProg_.removeAllShaders();
 }
 
 void BlackHoleWidget::ensureOutputTex(int w, int h) {
-    if (!outputTex_) glGenTextures(1, &outputTex_);
+    if (!outputTex_)
+        glGenTextures(1, &outputTex_);
     glBindTexture(GL_TEXTURE_2D, outputTex_);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -244,7 +411,7 @@ void BlackHoleWidget::ensureOutputTex(int w, int h) {
 void BlackHoleWidget::updateCameraMatrices() {
     view_.setToIdentity();
     const QVector3D eye = cam_.position();
-    view_.lookAt(eye, cam_.target, QVector3D(0,1,0));
+    view_.lookAt(eye, cam_.target, QVector3D(0, 1, 0));
 
     proj_.setToIdentity();
     const float aspect = width() > 0 ? float(width()) / float(height() > 0 ? height() : 1) : 1.0f;
@@ -254,12 +421,15 @@ void BlackHoleWidget::updateCameraMatrices() {
 }
 
 void BlackHoleWidget::uploadCameraUBO() {
-    // layout(std140): we pack view, proj, viewProj, camPos
+    // layout(std140): pack view, proj, viewProj, camPos
     glBindBuffer(GL_UNIFORM_BUFFER, cameraUBO_);
     size_t offset = 0;
-    glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(QMatrix4x4), view_.constData()); offset += sizeof(QMatrix4x4);
-    glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(QMatrix4x4), proj_.constData()); offset += sizeof(QMatrix4x4);
-    glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(QMatrix4x4), viewProj_.constData()); offset += sizeof(QMatrix4x4);
+    glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(QMatrix4x4), view_.constData());
+    offset += sizeof(QMatrix4x4);
+    glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(QMatrix4x4), proj_.constData());
+    offset += sizeof(QMatrix4x4);
+    glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(QMatrix4x4), viewProj_.constData());
+    offset += sizeof(QMatrix4x4);
     const QVector3D eye = cam_.position();
     const QVector4D camPos(eye.x(), eye.y(), eye.z(), 1.0f);
     glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(QVector4D), &camPos);
@@ -272,32 +442,31 @@ void BlackHoleWidget::uploadDiskUBO() {
     const float r1 = float(2.2 * r_s);
     const float r2 = float(5.2 * r_s);
     const float density = 2.0f;
-    const float data[4] = { r1, r2, density, 0.0f };
+    const float data[4] = {r1, r2, density, 0.0f};
 
     glBindBuffer(GL_UNIFORM_BUFFER, diskUBO_);
     glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(data), data);
 }
 
 void BlackHoleWidget::uploadObjectsUBO() {
-    // Reserved for future use (SSBO preferred); not used by compute shader now.
+    // Reserved for future use (SSBO preferred); not used by shaders now.
     glBindBuffer(GL_UNIFORM_BUFFER, objectsUBO_);
-    glBufferData(GL_UNIFORM_BUFFER, GLsizeiptr(objects_.size() * sizeof(ObjectData)),
-                 objects_.data(), GL_DYNAMIC_DRAW);
+    glBufferData(GL_UNIFORM_BUFFER, GLsizeiptr(objects_.size() * sizeof(ObjectData)), objects_.data(), GL_DYNAMIC_DRAW);
 }
 
 void BlackHoleWidget::rebuildGrid() {
-    // CPU grid generation with Schwarzschild-like warp (matches your reference idea)
+    // CPU grid generation with Schwarzschild-like warp
     const int gridSize = gridSize_;
     const float spacing = spacing_;
     std::vector<QVector3D> vertices;
     std::vector<GLuint> indices;
-    vertices.reserve((gridSize+1)*(gridSize+1));
-    indices.reserve(gridSize*gridSize*4);
+    vertices.reserve((gridSize + 1) * (gridSize + 1));
+    indices.reserve(gridSize * gridSize * 4);
 
     for (int z = 0; z <= gridSize; ++z) {
         for (int x = 0; x <= gridSize; ++x) {
-            const float worldX = (x - gridSize/2) * spacing;
-            const float worldZ = (z - gridSize/2) * spacing;
+            const float worldX = (x - gridSize / 2) * spacing;
+            const float worldZ = (z - gridSize / 2) * spacing;
             float y = 0.f;
 
             for (const auto& obj : objects_) {
@@ -306,7 +475,7 @@ void BlackHoleWidget::rebuildGrid() {
                 const double r_s = 2.0 * G_ * mass / (C_ * C_);
                 const double dx = double(worldX) - double(objPos.x());
                 const double dz = double(worldZ) - double(objPos.z());
-                const double dist = std::sqrt(dx*dx + dz*dz);
+                const double dist = std::sqrt(dx * dx + dz * dz);
 
                 if (dist > r_s) {
                     const double deltaY = 2.0 * std::sqrt(r_s * (dist - r_s));
@@ -330,17 +499,18 @@ void BlackHoleWidget::rebuildGrid() {
         }
     }
 
-    if (!gridVAO_) glGenVertexArrays(1, &gridVAO_);
-    if (!gridVBO_) glGenBuffers(1, &gridVBO_);
-    if (!gridEBO_) glGenBuffers(1, &gridEBO_);
+    if (!gridVAO_)
+        glGenVertexArrays(1, &gridVAO_);
+    if (!gridVBO_)
+        glGenBuffers(1, &gridVBO_);
+    if (!gridEBO_)
+        glGenBuffers(1, &gridEBO_);
 
     glBindVertexArray(gridVAO_);
     glBindBuffer(GL_ARRAY_BUFFER, gridVBO_);
-    glBufferData(GL_ARRAY_BUFFER, GLsizeiptr(vertices.size() * sizeof(QVector3D)),
-                 vertices.data(), GL_DYNAMIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, GLsizeiptr(vertices.size() * sizeof(QVector3D)), vertices.data(), GL_DYNAMIC_DRAW);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gridEBO_);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, GLsizeiptr(indices.size() * sizeof(GLuint)),
-                 indices.data(), GL_DYNAMIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, GLsizeiptr(indices.size() * sizeof(GLuint)), indices.data(), GL_DYNAMIC_DRAW);
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(QVector3D), (void*)0);
     glBindVertexArray(0);
@@ -361,7 +531,7 @@ void BlackHoleWidget::dispatchCompute() {
 
     // Determine current texture size
     glBindTexture(GL_TEXTURE_2D, outputTex_);
-    int w=0,h=0;
+    int w = 0, h = 0;
     glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &w);
     glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &h);
     glBindTexture(GL_TEXTURE_2D, 0);
@@ -378,7 +548,8 @@ void BlackHoleWidget::dispatchCompute() {
 void BlackHoleWidget::drawGrid() {
     gridProg_.bind();
     const int loc = gridProg_.uniformLocation("viewProj");
-    if (loc >= 0) gridProg_.setUniformValue(loc, viewProj_);
+    if (loc >= 0)
+        gridProg_.setUniformValue(loc, viewProj_);
 
     glBindVertexArray(gridVAO_);
     glDrawElements(GL_LINES, gridIndexCount_, GL_UNSIGNED_INT, nullptr);
@@ -390,7 +561,8 @@ void BlackHoleWidget::drawGrid() {
 void BlackHoleWidget::drawFullscreenQuad() {
     quadProg_.bind();
     const int u = quadProg_.uniformLocation("uTex");
-    if (u >= 0) quadProg_.setUniformValue(u, 0);
+    if (u >= 0)
+        quadProg_.setUniformValue(u, 0);
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, outputTex_);
@@ -418,8 +590,11 @@ void BlackHoleWidget::drawFullscreenLensFallback() {
 
 QPointF BlackHoleWidget::projectToScreen(const QVector3D& p, bool& clipped) const {
     QVector4D hp = viewProj_ * QVector4D(p, 1.0f);
-    if (hp.w() == 0.0f) { clipped = true; return {}; }
-    const QVector3D ndc = QVector3D(hp.x()/hp.w(), hp.y()/hp.w(), hp.z()/hp.w());
+    if (hp.w() == 0.0f) {
+        clipped = true;
+        return {};
+    }
+    const QVector3D ndc = QVector3D(hp.x() / hp.w(), hp.y() / hp.w(), hp.z() / hp.w());
     clipped = (ndc.x() < -1.f || ndc.x() > 1.f || ndc.y() < -1.f || ndc.y() > 1.f || ndc.z() < -1.f || ndc.z() > 1.f);
     const float sx = (ndc.x() * 0.5f + 0.5f) * float(width());
     const float sy = (1.0f - (ndc.y() * 0.5f + 0.5f)) * float(height());

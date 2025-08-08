@@ -1,7 +1,6 @@
-#version 430 core
+#version 410 core
 out vec4 FragColor;
 
-// Camera UBO (std140)
 layout(std140, binding = 1) uniform CameraBlock {
     mat4 uView;
     mat4 uProj;
@@ -9,7 +8,6 @@ layout(std140, binding = 1) uniform CameraBlock {
     vec4 uCamPos;
 };
 
-// Disk parameters (r1, r2, density, pad)
 layout(std140, binding = 2) uniform DiskBlock {
     vec4 uDisk; // x=r1, y=r2, z=density
 };
@@ -38,7 +36,6 @@ bool intersectPlaneY(vec3 ro, vec3 rd, float y, out float t) {
 void main() {
     vec2 ndc = vUV * 2.0 - 1.0;
 
-    // Reconstruct world ray (same as compute)
     mat4 invProj = inverse(uProj);
     mat4 invView = inverse(uView);
     vec4 clip = vec4(ndc, 1.0, 1.0);
