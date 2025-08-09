@@ -13,7 +13,6 @@ add_executable(blackhole_exe
         src/blackhole_widget.h
         src/blackhole_widget.cpp
         src/resources.qrc
-        src/blackhole_widget.h
 )
 
 target_link_libraries(blackhole_exe PRIVATE
@@ -22,9 +21,9 @@ target_link_libraries(blackhole_exe PRIVATE
         Qt6::OpenGLWidgets
 )
 
-target_sources(blackhole_exe PRIVATE
-        src/resources.qrc
-)
+# Resource paths debugging
+get_target_property(RCC_SOURCES blackhole_exe AUTORCC_SOURCES)
+message(STATUS "AUTORCC Sources: ${RCC_SOURCES}")
 
 if(APPLE)
     set_target_properties(blackhole_exe PROPERTIES MACOSX_BUNDLE TRUE)

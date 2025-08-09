@@ -11,12 +11,12 @@ layout(std140, binding = 1) uniform CameraBlock {
 };
 
 layout(std140, binding = 2) uniform DiskBlock {
-    vec4 uDisk; // x=r1, y=r2, z=density
+    vec4 uDisk;// x=r1, y=r2, z=density
 };
 
 layout(std140, binding = 3) uniform ObjectsBlock {
-// reserved
-} objs;
+    objs;
+};
 
 bool intersectSphere(vec3 ro, vec3 rd, vec3 center, float radius, out float tHit) {
     vec3 oc = ro - center;
@@ -53,7 +53,7 @@ void main() {
     vec3 rd = normalize((invView * vec4(rdView, 0.0)).xyz);
     vec3 ro = uCamPos.xyz;
 
-    float r_s = uDisk.x / 2.2; // since r1 = 2.2 * r_s in C++
+    float r_s = uDisk.x / 2.2;// since r1 = 2.2 * r_s in C++
     float r1  = uDisk.x;
     float r2  = uDisk.y;
 

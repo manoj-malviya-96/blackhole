@@ -1,24 +1,23 @@
 #pragma once
 
 #include <QMatrix4x4>
-#include <QOpenGLFunctions_4_3_Core>
+#include <QOpenGLFunctions_4_1_Core>
 #include <QOpenGLShaderProgram>
 #include <QOpenGLWidget>
 #include <QTimer>
 #include <QVector>
 #include <vector>
 
-class BlackHoleWidget : public QOpenGLWidget, protected QOpenGLFunctions_4_3_Core {
+class BlackHoleWidget : public QOpenGLWidget, protected QOpenGLFunctions_4_1_Core {
     Q_OBJECT
 public:
     explicit BlackHoleWidget(QWidget* parent = nullptr);
     ~BlackHoleWidget() override;
 
-    QSize minimumSizeHint() const override { return {640, 480}; }
-    QSize sizeHint() const override { return {960, 720}; }
+    [[nodiscard]] QSize minimumSizeHint() const override { return {640, 480}; }
+    [[nodiscard]] QSize sizeHint() const override { return {960, 720}; }
 
 protected:
-    // Qt GL lifecycle
     void initializeGL() override;
     void resizeGL(int w, int h) override;
     void paintGL() override;
@@ -86,50 +85,50 @@ private:
     QPointF projectToScreen(const QVector3D& p, bool& clipped) const;
 
     // Programs
-    QOpenGLShaderProgram gridProg_;
-    QOpenGLShaderProgram quadProg_;
-    QOpenGLShaderProgram computeProg_;
-    QOpenGLShaderProgram lensProg_; // fallback fragment shader
+    QOpenGLShaderProgram m_gridProg;
+    QOpenGLShaderProgram m_quadProg;
+    QOpenGLShaderProgram m_computeProg;
+    QOpenGLShaderProgram m_lensProg; // fallback fragment shader
 
     // UBOs
-    GLuint cameraUBO_ = 0;
-    GLuint diskUBO_ = 0;
-    GLuint objectsUBO_ = 0;
+    GLuint m_cameraUBO = 0;
+    GLuint m_diskUBO = 0;
+    GLuint m_objectsUBO = 0;
 
     // Fullscreen quad + texture
-    GLuint quadVAO_ = 0;
-    GLuint quadVBO_ = 0;
-    GLuint quadEBO_ = 0;
-    GLuint outputTex_ = 0;
+    GLuint m_quadVAO = 0;
+    GLuint m_quadVBO = 0;
+    GLuint m_quadEBO = 0;
+    GLuint m_outputTex = 0;
 
     // Grid
-    GLuint gridVAO_ = 0;
-    GLuint gridVBO_ = 0;
-    GLuint gridEBO_ = 0;
-    int gridIndexCount_ = 0;
+    GLuint m_gridVAO = 0;
+    GLuint m_gridVBO = 0;
+    GLuint m_gridEBO = 0;
+    int m_gridIndexCount = 0;
 
     // Matrices
-    QMatrix4x4 view_;
-    QMatrix4x4 proj_;
-    QMatrix4x4 viewProj_;
+    QMatrix4x4 m_view;
+    QMatrix4x4 m_proj;
+    QMatrix4x4 m_viewProj;
 
     // Scene
-    std::vector<ObjectData> objects_;
-    Camera cam_;
+    std::vector<ObjectData> m_objects;
+    Camera m_cam;
 
     // Timing
-    QTimer timer_;
-    bool paused_ = false;
+    QTimer m_timer;
+    bool m_paused = false;
 
     // Params
-    int computeW_ = 200;
-    int computeH_ = 150;
-    int hiComputeW_ = 640;
-    int hiComputeH_ = 360;
+    int m_computeW = 200;
+    int m_computeH = 150;
+    int m_hiComputeW = 640;
+    int m_hiComputeH = 360;
 
-    int gridSize_ = 25;
-    float spacing_ = 1e10f;
+    int m_gridSize = 25;
+    float m_spacing = 1e10f;
 
     // Feature detection
-    bool useCompute_ = true;
+    bool m_useCompute = true;
 };

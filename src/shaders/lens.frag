@@ -1,14 +1,15 @@
 #version 410 core
 out vec4 FragColor;
 
-layout(std140, binding = 1) uniform CameraBlock {
+// Remove binding points as they're not supported in macOS OpenGL 4.1
+layout(std140) uniform CameraBlock {
     mat4 uView;
     mat4 uProj;
     mat4 uViewProj;
     vec4 uCamPos;
 };
 
-layout(std140, binding = 2) uniform DiskBlock {
+layout(std140) uniform DiskBlock {
     vec4 uDisk; // x=r1, y=r2, z=density
 };
 
