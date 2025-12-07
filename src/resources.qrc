@@ -1,0 +1,10 @@
+<RCC>
+    <qresource prefix="/src/shaders">
+        <file>shaders/grid.vert</file>
+        <file>shaders/grid.frag</file>
+        <file>shaders/quad.vert</file>
+        <file>shaders/quad.frag</file>
+        <file>shaders/geodesic.comp</file>
+        <file>shaders/lens.frag</file>
+    </qresource>
+</RCC>
