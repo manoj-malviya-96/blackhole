@@ -31,34 +31,34 @@ private:
     void bindUniformBlocks(QOpenGLShaderProgram& program);
 
     // Programs
-    QOpenGLShaderProgram gridProg_;
-    QOpenGLShaderProgram quadProg_;
-    QOpenGLShaderProgram computeProg_;
-    QOpenGLShaderProgram lensProg_; // fallback fragment shader
+    QOpenGLShaderProgram m_gridProg;
+    QOpenGLShaderProgram m_quadProg;
+    QOpenGLShaderProgram m_computeProg;
+    QOpenGLShaderProgram m_lensProg; // fallback fragment shader
 
     // UBOs
-    GLuint cameraUBO_ = 0;
-    GLuint diskUBO_ = 0;
-    GLuint objectsUBO_ = 0;
+    GLuint m_cameraUBO = 0;
+    GLuint m_diskUBO = 0;
+    GLuint m_objectsUBO = 0;
 
     // Fullscreen quad + texture
-    GLuint quadVAO_ = 0;
-    GLuint quadVBO_ = 0;
-    GLuint quadEBO_ = 0;
-    GLuint outputTex_ = 0;
+    GLuint m_quadVAO = 0;
+    GLuint m_quadVBO = 0;
+    GLuint m_quadEBO = 0;
+    GLuint m_outputTex = 0;
 
     // Grid
-    GLuint gridVAO_ = 0;
-    GLuint gridVBO_ = 0;
-    GLuint gridEBO_ = 0;
-    int gridIndexCount_ = 0;
-    uint64_t lastGridVersion_ = 0;
+    GLuint m_gridVAO = 0;
+    GLuint m_gridVBO = 0;
+    GLuint m_gridEBO = 0;
+    int m_gridIndexCount = 0;
+    uint64_t m_lastGridVersion = 0;
 
     // Matrices (recomputed each frame in render())
-    QMatrix4x4 view_;
-    QMatrix4x4 proj_;
-    QMatrix4x4 viewProj_;
-    QVector3D eye_;
+    QMatrix4x4 m_view;
+    QMatrix4x4 m_proj;
+    QMatrix4x4 m_viewProj;
+    QVector3D m_eye;
 
     // Params
     static constexpr int kComputeW = 200;
@@ -71,7 +71,7 @@ private:
     // size or step through a std140 mat4 in a UBO - use the GLSL mat4 size instead.
     static constexpr size_t kMat4Bytes = 16 * sizeof(float);
 
-    bool useCompute_ = true;
+    bool m_useCompute = true;
 };
 
 } // namespace renderer

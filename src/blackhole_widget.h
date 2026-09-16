@@ -28,10 +28,10 @@ protected:
     void keyPressEvent(QKeyEvent*) override;
 
 private:
-    engine::Engine engine_;
-    renderer::Camera cam_;
-    renderer::Renderer renderer_;
+    engine::Engine m_engine;
+    renderer::Camera m_cam;
+    renderer::Renderer m_renderer;
 
-    QTimer timer_;
-    bool paused_ = false;
+    QTimer m_timer;
+    bool m_paused = false;
 };
