@@ -65,10 +65,13 @@ private:
     static constexpr int kGridSize = 25;
     static constexpr float kGridSpacing = 1e10f;
 
+<<<<<<< HEAD
     // QMatrix4x4's sizeof() is larger than 64 (it carries an internal flagBits
     // optimization flag alongside the 16 floats), so it must never be used to
     // size or step through a std140 mat4 in a UBO - use the GLSL mat4 size instead.
     static constexpr size_t kMat4Bytes = 16 * sizeof(float);
 
+=======
+>>>>>>> origin/master
     bool useCompute_ = true;
 };

@@ -39,6 +39,7 @@
 
 # debug information files
 *.dwo
+<<<<<<< HEAD
 Makefile
 CMakeCache.txt
 cmake_install.cmake
@@ -49,4 +50,25 @@ CMakeFiles/
 .qt/
 .zed/
 compile_commands.json
+=======
 
+# Build & Tooling
+build/
+cmake-build-*/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+.qt/
+*.autogen/
+*_autogen/
+
+# Node & Package distribution
+node_modules/
+dist/
+*.tgz
+
+# IDE & OS
+.DS_Store
+.idea/
+.vscode/

@@ -38,7 +38,11 @@ void Renderer::initialize() {
 
     glGenBuffers(1, &cameraUBO_);
     glBindBuffer(GL_UNIFORM_BUFFER, cameraUBO_);
+<<<<<<< HEAD
     glBufferData(GL_UNIFORM_BUFFER, kMat4Bytes * 3 + sizeof(QVector4D), nullptr, GL_DYNAMIC_DRAW);
+=======
+    glBufferData(GL_UNIFORM_BUFFER, sizeof(QMatrix4x4) * 3 + sizeof(QVector4D), nullptr, GL_DYNAMIC_DRAW);
+>>>>>>> origin/master
     glBindBufferBase(GL_UNIFORM_BUFFER, 1, cameraUBO_);
 
     glGenBuffers(1, &diskUBO_);
@@ -169,9 +173,15 @@ void Renderer::uploadCameraUBO() {
     // layout(std140): we pack view, proj, viewProj, camPos
     glBindBuffer(GL_UNIFORM_BUFFER, cameraUBO_);
     size_t offset = 0;
+<<<<<<< HEAD
     glBufferSubData(GL_UNIFORM_BUFFER, offset, kMat4Bytes, view_.constData()); offset += kMat4Bytes;
     glBufferSubData(GL_UNIFORM_BUFFER, offset, kMat4Bytes, proj_.constData()); offset += kMat4Bytes;
     glBufferSubData(GL_UNIFORM_BUFFER, offset, kMat4Bytes, viewProj_.constData()); offset += kMat4Bytes;
+=======
+    glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(QMatrix4x4), view_.constData()); offset += sizeof(QMatrix4x4);
+    glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(QMatrix4x4), proj_.constData()); offset += sizeof(QMatrix4x4);
+    glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(QMatrix4x4), viewProj_.constData()); offset += sizeof(QMatrix4x4);
+>>>>>>> origin/master
     const QVector4D camPos(eye_.x(), eye_.y(), eye_.z(), 1.0f);
     glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(QVector4D), &camPos);
 }
