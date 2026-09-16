@@ -56,6 +56,8 @@ void Renderer::initialize() {
         ensureOutputTex(kComputeW, kComputeH);
     }
 
+    clock_.start();
+
     glDisable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -177,12 +179,13 @@ void Renderer::uploadCameraUBO() {
 }
 
 void Renderer::uploadDiskUBO(const std::vector<SceneObject>& objects) {
-    // r1, r2 from Schwarzschild radius of primary object; density placeholder
+    // r1, r2 from Schwarzschild radius of primary object.
     const double r_s = physics::schwarzschildRadius(objects.front().mass);
     const float r1 = float(2.2 * r_s);
     const float r2 = float(5.2 * r_s);
-    const float density = 2.0f;
-    const float data[4] = {r1, r2, density, 0.0f};
+    const float spin = float(objects.front().spin);
+    const float time = float(clock_.elapsed()) / 1000.0f;
+    const float data[4] = {r1, r2, spin, time};
 
     glBindBuffer(GL_UNIFORM_BUFFER, diskUBO_);
     glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(data), data);

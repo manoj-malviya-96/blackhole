@@ -2,6 +2,7 @@
 #include <QOpenGLExtraFunctions>
 #include <QOpenGLShaderProgram>
 #include <QMatrix4x4>
+#include <QElapsedTimer>
 #include <vector>
 #include "camera.h"
 #include "scene.h"
@@ -71,4 +72,5 @@ private:
     static constexpr size_t kMat4Bytes = 16 * sizeof(float);
 
     bool useCompute_ = true;
+    QElapsedTimer clock_;
 };

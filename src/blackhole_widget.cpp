@@ -11,7 +11,8 @@ BlackHoleWidget::BlackHoleWidget(QWidget* parent) : QOpenGLWidget(parent) {
         QVector4D(0, 0, 0, 5e10f),   // pos + radius
         QVector4D(1, 1, 1, 1),       // color
         4.3e6 * physics::kSolarMass, // mass
-        QVector3D(0, 0, 0)           // velocity (unused)
+        QVector3D(0, 0, 0),          // velocity (unused)
+        0.9                          // spin (a/M) - near-extremal, for a visible frame-drag swirl
     });
 
     connect(&timer_, &QTimer::timeout, this, [this]() {
