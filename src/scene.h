@@ -17,4 +17,5 @@ struct SceneObject {
     QVector4D color;     // rgb, a
     double mass;          // kilograms
     QVector3D velocity;  // not used yet
+    double spin = 0.0;    // dimensionless Kerr parameter a/M, [-1, 1]
 };

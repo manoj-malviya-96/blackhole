@@ -39,7 +39,6 @@
 
 # debug information files
 *.dwo
-
 # Build & Tooling
 build/
 cmake-build-*/
@@ -48,8 +47,10 @@ CMakeFiles/
 cmake_install.cmake
 Makefile
 .qt/
+.zed/
 *.autogen/
 *_autogen/
+compile_commands.json
 
 # Node & Package distribution
 node_modules/

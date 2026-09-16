@@ -9,30 +9,217 @@ layout(std140) uniform CameraBlock {
     vec4 uCamPos;
 };
 
-// Disk parameters (r1, r2, density, pad)
+// Disk parameters
 layout(std140) uniform DiskBlock {
-    vec4 uDisk; // x=r1, y=r2, z=density
+    vec4 uDisk; // x=r1, y=r2, z=spin (a/M), w=time (seconds)
 };
 
 in vec2 vUV;
 
-bool intersectSphere(vec3 ro, vec3 rd, vec3 center, float radius, out float tHit) {
-    vec3 oc = ro - center;
-    float b = dot(oc, rd);
-    float c = dot(oc, oc) - radius*radius;
-    float disc = b*b - c;
-    if (disc < 0.0) return false;
-    float s = sqrt(disc);
-    float t0 = -b - s;
-    float t1 = -b + s;
-    tHit = (t0 > 0.0) ? t0 : ((t1 > 0.0) ? t1 : -1.0);
-    return tHit > 0.0;
+float hash21(vec2 p) {
+    p = fract(p * vec2(123.34, 456.21));
+    p += dot(p, p + 45.32);
+    return fract(p.x * p.y);
 }
 
-bool intersectPlaneY(vec3 ro, vec3 rd, float y, out float t) {
-    if (abs(rd.y) < 1e-6) return false;
-    t = (y - ro.y) / rd.y;
-    return t > 0.0;
+float valueNoise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    float a = hash21(i);
+    float b = hash21(i + vec2(1.0, 0.0));
+    float c = hash21(i + vec2(0.0, 1.0));
+    float d = hash21(i + vec2(1.0, 1.0));
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+float fbm(vec2 p) {
+    float v = 0.0;
+    float amp = 0.5;
+    for (int i = 0; i < 6; ++i) {
+        v += amp * valueNoise(p);
+        p *= 2.03; // slight lacunarity offset avoids octaves re-aligning into a grid
+        amp *= 0.5;
+    }
+    return v;
+}
+
+vec3 starField(vec3 dir, float uTime) {
+    vec2 uv = vec2(atan(dir.z, dir.x), acos(clamp(dir.y, -1.0, 1.0)));
+    // Anisotropic cell density elongates each star into a short streak/dash
+    // rather than a round point, echoing the reference's motion-streaked look.
+    vec2 grid = uv * vec2(70.0, 130.0);
+    vec2 cell = floor(grid);
+    vec2 f = fract(grid) - 0.5;
+    f.y *= 0.35;
+    float h = hash21(cell);
+    vec3 star = vec3(0.0);
+    if (h > 0.984) {
+        float d = length(f);
+        float brightness = 0.4 + 0.6 * hash21(cell + 3.7);
+        brightness *= 0.75 + 0.25 * sin(uTime * (0.5 + hash21(cell + 9.1)) + h * 20.0);
+        vec3 tint = mix(vec3(0.65, 0.75, 1.0), vec3(1.0, 0.9, 0.7), hash21(cell + 5.2));
+        star = tint * smoothstep(0.5, 0.0, d) * brightness;
+    }
+    return star;
+}
+
+// Cheap non-volumetric nebula: a drifting fbm haze wrapped around the sky
+// direction, standing in for wispy gas clouds without a full raymarch. Tinted
+// to match the disk so the whole sky reads as one continuous field of gas.
+vec3 gasCloud(vec3 dir, float uTime) {
+    vec2 uv = vec2(atan(dir.z, dir.x), dir.y);
+    float n = fbm(uv * 2.2 + vec2(uTime * 0.01, uTime * 0.006));
+    float fine = fbm(uv * 6.0 - vec2(uTime * 0.02, 0.0));
+    float density = smoothstep(0.25, 0.9, n * 0.75 + fine * 0.25);
+    vec3 warm = vec3(0.55, 0.36, 0.20);
+    vec3 dim = vec3(0.05, 0.04, 0.05);
+    return mix(dim, warm, density) * density * 0.6;
+}
+
+vec3 shadeDisk(vec3 p, float R, float r1, float r2, float rs, float minR, float twist, float uTime) {
+    float t = clamp((R - r1) / max(r2 - r1, 1e-6), 0.0, 1.0);
+
+    vec3 hot = vec3(1.0, 0.95, 0.85);
+    vec3 mid = vec3(0.95, 0.55, 0.20);
+    vec3 cool = vec3(0.45, 0.16, 0.05);
+    vec3 base = t < 0.35 ? mix(hot, mid, t / 0.35) : mix(mid, cool, (t - 0.35) / 0.65);
+
+    // Differential (Keplerian-ish) rotation: inner gas both winds tighter and
+    // orbits faster, so the shear phase advances with time and spin twist.
+    float ang = atan(p.z, p.x) + twist;
+    float omega = 1.2 * pow(r1 / max(R, r1), 1.5);
+    float phase = ang - omega * uTime;
+    float shear = phase * 2.0 - 5.0 * (r1 / max(R, 1e-6));
+    float turb = fbm(vec2(shear * 1.6, R / (r2 - r1) * 6.0 - uTime * 0.05));
+    float grain = fbm(vec2(shear * 6.0, R / (r2 - r1) * 22.0 - uTime * 0.15));
+    base *= 0.55 + 0.55 * turb + 0.25 * grain;
+
+    float innerGlow = 1.0 - smoothstep(0.0, 0.25, t);
+    base += innerGlow * vec3(1.0, 0.92, 0.8) * 0.9;
+
+    float outerFade = 1.0 - smoothstep(0.7, 1.0, t);
+    base *= mix(0.2, 1.0, outerFade);
+
+    // Rays that grazed near the photon sphere before landing here light up the
+    // ring: a soft wide bloom-like halo plus a tight, crisp bright rim.
+    float softGlow = smoothstep(3.0 * rs, 1.3 * rs, minR);
+    float sharpGlow = smoothstep(1.3 * rs, 1.01 * rs, minR);
+    base += softGlow * vec3(1.0, 0.82, 0.55) * 0.6;
+    base += sharpGlow * vec3(1.0, 0.98, 0.95) * 2.2;
+
+    return base;
+}
+
+// Integrates the Schwarzschild null-geodesic orbit equation d2u/dphi2 + u = 1.5*rs*u^2
+// (u = 1/r) via RK4, walking the ray's invariant orbital plane and checking for
+// horizon capture / disk-plane crossings / escape at each angular step.
+//
+// `spin` adds a stylized frame-drag: it twists the resolved hit point around the
+// world Y (spin) axis by an angle that grows the closer the ray passes to the
+// horizon. This is NOT the exact Kerr metric (which requires the Carter constant
+// and generally non-planar photon paths) - it's a cheap approximation that gives
+// a visually convincing "spinning black hole drags light around it" swirl.
+vec3 traceGeodesic(vec3 ro, vec3 rd, float rs, float r1, float r2, float spin, float uTime) {
+    float r0 = length(ro);
+    vec3 e1 = ro / r0;
+    vec3 nrm = cross(ro, rd);
+    float sinTheta = length(nrm) / r0;
+
+    if (sinTheta < 1e-4) {
+        // Zero angular momentum: photon travels radially, no deflection.
+        float a = dot(rd, e1);
+        return a < 0.0 ? vec3(0.0) : (starField(rd, uTime) + gasCloud(rd, uTime));
+    }
+
+    vec3 n = nrm / (r0 * sinTheta);
+    vec3 e2 = cross(n, e1);
+
+    float a = dot(rd, e1);
+    float b = dot(rd, e2);
+
+    float u = 1.0 / r0;
+    float v = -u * (a / b);
+
+    const float dphi = 0.05;
+    const int STEPS = 220;
+    const float cosD = cos(dphi);
+    const float sinD = sin(dphi);
+    float spinLen = spin * rs * 0.5; // a = (a/M)*M, with M = rs/2
+    const float dragGain = 4.0;      // tuned for visual effect, not exact GR
+
+    float cosPhi = 1.0;
+    float sinPhi = 0.0;
+    vec3 prevPos = ro;
+    float minR = r0;
+    float twist = 0.0;
+    float escapeR = r2 * 60.0;
+
+    for (int i = 0; i < STEPS; ++i) {
+        float k1u = v;
+        float k1v = -u + 1.5 * rs * u * u;
+        float u2 = u + 0.5 * dphi * k1u;
+        float k2u = v + 0.5 * dphi * k1v;
+        float k2v = -u2 + 1.5 * rs * u2 * u2;
+        float u3 = u + 0.5 * dphi * k2u;
+        float k3u = v + 0.5 * dphi * k2v;
+        float k3v = -u3 + 1.5 * rs * u3 * u3;
+        float u4 = u + dphi * k3u;
+        float k4u = v + dphi * k3v;
+        float k4v = -u4 + 1.5 * rs * u4 * u4;
+
+        u += (dphi / 6.0) * (k1u + 2.0 * k2u + 2.0 * k3u + k4u);
+        v += (dphi / 6.0) * (k1v + 2.0 * k2v + 2.0 * k3v + k4v);
+
+        if (u <= 0.0) {
+            return starField(normalize(prevPos), uTime) + gasCloud(normalize(prevPos), uTime);
+        }
+
+        float newCos = cosPhi * cosD - sinPhi * sinD;
+        float newSin = sinPhi * cosD + cosPhi * sinD;
+        cosPhi = newCos;
+        sinPhi = newSin;
+
+        float r = 1.0 / u;
+        minR = min(minR, r);
+        twist += dragGain * spinLen * rs / (r * r * r) * dphi;
+
+        if (r <= rs) {
+            // Decorative-only shimmer at the silhouette edge (a nod to Hawking
+            // radiation, not a physically visible effect at this mass scale).
+            float phiAngle = atan(sinPhi, cosPhi);
+            float edge = 1.0 - clamp((rs - r) / (rs * 0.2), 0.0, 1.0);
+            float flicker = hash21(vec2(floor(phiAngle * 40.0), floor(uTime * 3.0)));
+            float sparkle = step(0.965, flicker) * edge;
+            return vec3(0.6, 0.75, 1.0) * sparkle * 0.8;
+        }
+
+        vec3 pos = r * (cosPhi * e1 + sinPhi * e2);
+
+        if (sign(pos.y) != sign(prevPos.y)) {
+            float tt = prevPos.y / (prevPos.y - pos.y);
+            vec3 pHit = mix(prevPos, pos, tt);
+            float R = length(pHit.xz);
+            if (R >= r1 && R <= r2) {
+                return shadeDisk(pHit, R, r1, r2, rs, minR, twist, uTime);
+            }
+        }
+
+        if (r > escapeR) {
+            vec3 dir = normalize(pos);
+            vec3 esc = starField(dir, uTime) + gasCloud(dir, uTime);
+            float softGlow = smoothstep(3.0 * rs, 1.3 * rs, minR);
+            float sharpGlow = smoothstep(1.3 * rs, 1.01 * rs, minR);
+            esc += softGlow * vec3(1.0, 0.82, 0.55) * 0.5;
+            esc += sharpGlow * vec3(1.0, 0.98, 0.95) * 1.8;
+            return esc;
+        }
+
+        prevPos = pos;
+    }
+
+    // Never resolved within the step budget: a near-critical orbit -> shadow edge.
+    return vec3(0.0);
 }
 
 void main() {
@@ -48,37 +235,17 @@ void main() {
     vec3 rd = normalize((invView * vec4(rdView, 0.0)).xyz);
     vec3 ro = uCamPos.xyz;
 
-    float r_s = uDisk.x / 2.2;
-    float r1  = uDisk.x;
-    float r2  = uDisk.y;
+    float r1 = uDisk.x;
+    float r2 = uDisk.y;
+    float rs = r1 / 2.2;
+    float spin = uDisk.z;
+    float uTime = uDisk.w;
 
-    float tHit;
-    bool hitBH = intersectSphere(ro, rd, vec3(0.0), r_s, tHit);
+    vec3 col = traceGeodesic(ro, rd, rs, r1, r2, spin, uTime);
 
-    float tPlane;
-    bool hitPlane = intersectPlaneY(ro, rd, 0.0, tPlane);
-    bool inDisk = false;
-    vec3 pDisk = vec3(0.0);
-    if (hitPlane) {
-        pDisk = ro + tPlane * rd;
-        float R = length(pDisk.xz);
-        inDisk = (R >= r1 && R <= r2);
-    }
-
-    vec3 col = vec3(0.0);
-    if (hitBH && (!hitPlane || tHit < tPlane)) {
-        col = vec3(0.0);
-    } else if (hitPlane && inDisk) {
-        float R = clamp(length(pDisk.xz), r1, r2);
-        float a = atan(pDisk.z, pDisk.x);
-        float v = 1.0 - smoothstep(r1, r2, R);
-        vec3 tint = vec3(1.0, 0.9, 0.7);
-        col = v * tint * (0.8 + 0.2 * sin(5.0*a));
-    } else {
-        float r = length(ndc);
-        float vignette = smoothstep(1.2, 0.2, r);
-        col = vec3(0.02) * vignette;
-    }
+    col = col / (1.0 + col); // filmic tonemap so glows roll off instead of clipping
+    float vig = smoothstep(1.4, 0.2, length(ndc));
+    col *= mix(0.6, 1.0, vig);
 
     FragColor = vec4(col, 1.0);
 }

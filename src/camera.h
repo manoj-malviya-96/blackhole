@@ -56,17 +56,17 @@ public:
     }
 
     void reset() {
-        radius = 6.34e10f;
+        radius = 2.2e11f;
         azimuth = 0.0f;
-        elevation = 1.5707963f;
+        elevation = 1.0f;
     }
 
     QVector3D target{0.f, 0.f, 0.f};
-    float radius = 6.34e10f;
+    float radius = 2.2e11f;
     float minRadius = 1e10f;
     float maxRadius = 1e12f;
     float azimuth = 0.0f;
-    float elevation = 1.57079632679f; // ~pi/2
+    float elevation = 1.0f; // tilted view - edge-on (~pi/2) puts the camera in the disk plane, hiding it
     float orbitSpeed = 0.01f;
     double zoomSpeed = 2.5e10;
 

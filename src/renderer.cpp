@@ -38,7 +38,7 @@ void Renderer::initialize() {
 
     glGenBuffers(1, &cameraUBO_);
     glBindBuffer(GL_UNIFORM_BUFFER, cameraUBO_);
-    glBufferData(GL_UNIFORM_BUFFER, sizeof(QMatrix4x4) * 3 + sizeof(QVector4D), nullptr, GL_DYNAMIC_DRAW);
+    glBufferData(GL_UNIFORM_BUFFER, kMat4Bytes * 3 + sizeof(QVector4D), nullptr, GL_DYNAMIC_DRAW);
     glBindBufferBase(GL_UNIFORM_BUFFER, 1, cameraUBO_);
 
     glGenBuffers(1, &diskUBO_);
@@ -55,6 +55,8 @@ void Renderer::initialize() {
     if (useCompute_) {
         ensureOutputTex(kComputeW, kComputeH);
     }
+
+    clock_.start();
 
     glDisable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
@@ -169,20 +171,21 @@ void Renderer::uploadCameraUBO() {
     // layout(std140): we pack view, proj, viewProj, camPos
     glBindBuffer(GL_UNIFORM_BUFFER, cameraUBO_);
     size_t offset = 0;
-    glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(QMatrix4x4), view_.constData()); offset += sizeof(QMatrix4x4);
-    glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(QMatrix4x4), proj_.constData()); offset += sizeof(QMatrix4x4);
-    glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(QMatrix4x4), viewProj_.constData()); offset += sizeof(QMatrix4x4);
+    glBufferSubData(GL_UNIFORM_BUFFER, offset, kMat4Bytes, view_.constData()); offset += kMat4Bytes;
+    glBufferSubData(GL_UNIFORM_BUFFER, offset, kMat4Bytes, proj_.constData()); offset += kMat4Bytes;
+    glBufferSubData(GL_UNIFORM_BUFFER, offset, kMat4Bytes, viewProj_.constData()); offset += kMat4Bytes;
     const QVector4D camPos(eye_.x(), eye_.y(), eye_.z(), 1.0f);
     glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(QVector4D), &camPos);
 }
 
 void Renderer::uploadDiskUBO(const std::vector<SceneObject>& objects) {
-    // r1, r2 from Schwarzschild radius of primary object; density placeholder
+    // r1, r2 from Schwarzschild radius of primary object.
     const double r_s = physics::schwarzschildRadius(objects.front().mass);
     const float r1 = float(2.2 * r_s);
-    const float r2 = float(5.2 * r_s);
-    const float density = 2.0f;
-    const float data[4] = {r1, r2, density, 0.0f};
+    const float r2 = float(11.0 * r_s);
+    const float spin = float(objects.front().spin);
+    const float time = float(clock_.elapsed()) / 1000.0f;
+    const float data[4] = {r1, r2, spin, time};
 
     glBindBuffer(GL_UNIFORM_BUFFER, diskUBO_);
     glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(data), data);

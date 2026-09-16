@@ -2,6 +2,7 @@
 #include <QOpenGLExtraFunctions>
 #include <QOpenGLShaderProgram>
 #include <QMatrix4x4>
+#include <QElapsedTimer>
 #include <vector>
 #include "camera.h"
 #include "scene.h"
@@ -65,5 +66,11 @@ private:
     static constexpr int kGridSize = 25;
     static constexpr float kGridSpacing = 1e10f;
 
+    // QMatrix4x4's sizeof() is larger than 64 (it carries an internal flagBits
+    // optimization flag alongside the 16 floats), so it must never be used to
+    // size or step through a std140 mat4 in a UBO - use the GLSL mat4 size instead.
+    static constexpr size_t kMat4Bytes = 16 * sizeof(float);
+
     bool useCompute_ = true;
+    QElapsedTimer clock_;
 };
