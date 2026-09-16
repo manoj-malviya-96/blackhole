@@ -13,6 +13,9 @@ add_executable(blackhole_exe
         src/main.cpp
         src/blackhole_widget.h
         src/blackhole_widget.cpp
+        src/engine/physics.h
+        src/engine/engine.h
+        src/engine/engine.cpp
         src/renderer/camera.h
         src/renderer/renderer.h
         src/renderer/renderer.cpp
