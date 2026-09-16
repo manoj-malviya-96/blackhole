@@ -8,37 +8,37 @@ Engine::Engine() {
 }
 
 void Engine::step(double dt) {
-    time_ += dt;
+    m_time += dt;
 }
 
 void Engine::reset() {
-    time_ = 0.0;
-    objects_.clear();
-    objects_.push_back({
+    m_time = 0.0;
+    m_objects.clear();
+    m_objects.push_back({
         .posRadius = QVector4D(0.0f, 0.0f, 0.0f, 5e10f),
         .color = QVector4D(1.0f, 1.0f, 1.0f, 1.0f),
         .mass = 4.3e6 * physics::kSolarMass,
         .velocity = QVector3D(0.0f, 0.0f, 0.0f),
         .spin = 0.9
     });
-    gridMeshDirty_ = true;
+    m_gridMeshDirty = true;
 }
 
 void Engine::addObject(const SceneObject& object) {
-    objects_.push_back(object);
-    gridMeshDirty_ = true;
+    m_objects.push_back(object);
+    m_gridMeshDirty = true;
 }
 
 std::vector<SceneObject>& Engine::objects() {
-    gridMeshDirty_ = true;
-    return objects_;
+    m_gridMeshDirty = true;
+    return m_objects;
 }
 
 DiskParams Engine::diskParams() const {
-    if (objects_.empty()) {
+    if (m_objects.empty()) {
         return DiskParams{};
     }
-    const auto& primary = objects_.front();
+    const auto& primary = m_objects.front();
     const double r_s = physics::schwarzschildRadius(primary.mass);
     return DiskParams{
         .r1 = static_cast<float>(2.2 * r_s),
@@ -48,20 +48,20 @@ DiskParams Engine::diskParams() const {
 }
 
 const GridMesh& Engine::gridMesh() const {
-    if (gridMeshDirty_) {
+    if (m_gridMeshDirty) {
         rebuildGridMesh();
-        gridMeshDirty_ = false;
-        ++gridVersion_;
+        m_gridMeshDirty = false;
+        ++m_gridVersion;
     }
-    return cachedGridMesh_;
+    return m_cachedGridMesh;
 }
 
 void Engine::rebuildGridMesh() const {
-    cachedGridMesh_.vertices.clear();
-    cachedGridMesh_.indices.clear();
+    m_cachedGridMesh.vertices.clear();
+    m_cachedGridMesh.indices.clear();
 
-    cachedGridMesh_.vertices.reserve((kGridSize + 1) * (kGridSize + 1));
-    cachedGridMesh_.indices.reserve(kGridSize * kGridSize * 4);
+    m_cachedGridMesh.vertices.reserve((kGridSize + 1) * (kGridSize + 1));
+    m_cachedGridMesh.indices.reserve(kGridSize * kGridSize * 4);
 
     for (int z = 0; z <= kGridSize; ++z) {
         for (int x = 0; x <= kGridSize; ++x) {
@@ -69,7 +69,7 @@ void Engine::rebuildGridMesh() const {
             const float worldZ = static_cast<float>(z - kGridSize / 2) * kGridSpacing;
             float y = 0.0f;
 
-            for (const auto& obj : objects_) {
+            for (const auto& obj : m_objects) {
                 const double r_s = physics::schwarzschildRadius(obj.mass);
                 const double dx = static_cast<double>(worldX) - static_cast<double>(obj.posRadius.x());
                 const double dz = static_cast<double>(worldZ) - static_cast<double>(obj.posRadius.z());
@@ -82,18 +82,18 @@ void Engine::rebuildGridMesh() const {
                     y += 2.0f * static_cast<float>(r_s) - 3e10f;
                 }
             }
-            cachedGridMesh_.vertices.emplace_back(worldX, y, worldZ);
+            m_cachedGridMesh.vertices.emplace_back(worldX, y, worldZ);
         }
     }
 
     for (int z = 0; z < kGridSize; ++z) {
         for (int x = 0; x < kGridSize; ++x) {
             const unsigned int i = static_cast<unsigned int>(z * (kGridSize + 1) + x);
-            cachedGridMesh_.indices.push_back(i);
-            cachedGridMesh_.indices.push_back(i + 1);
+            m_cachedGridMesh.indices.push_back(i);
+            m_cachedGridMesh.indices.push_back(i + 1);
 
-            cachedGridMesh_.indices.push_back(i);
-            cachedGridMesh_.indices.push_back(i + kGridSize + 1);
+            m_cachedGridMesh.indices.push_back(i);
+            m_cachedGridMesh.indices.push_back(i + kGridSize + 1);
         }
     }
 }

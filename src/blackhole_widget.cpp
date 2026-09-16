@@ -6,55 +6,55 @@
 BlackHoleWidget::BlackHoleWidget(QWidget* parent) : QOpenGLWidget(parent) {
     setFocusPolicy(Qt::StrongFocus);
 
-    connect(&timer_, &QTimer::timeout, this, [this]() {
-        if (!paused_) {
-            engine_.step(0.016);
+    connect(&m_timer, &QTimer::timeout, this, [this]() {
+        if (!m_paused) {
+            m_engine.step(0.016);
         }
         update();
     });
-    timer_.start(16); // ~60 fps
+    m_timer.start(16); // ~60 fps
 }
 
 BlackHoleWidget::~BlackHoleWidget() {
     makeCurrent();
-    renderer_.shutdown();
+    m_renderer.shutdown();
     doneCurrent();
 }
 
-void BlackHoleWidget::initializeGL() { renderer_.initialize(); }
+void BlackHoleWidget::initializeGL() { m_renderer.initialize(); }
 
-void BlackHoleWidget::resizeGL(int w, int h) { renderer_.resize(w, h); }
+void BlackHoleWidget::resizeGL(int w, int h) { m_renderer.resize(w, h); }
 
-void BlackHoleWidget::paintGL() { renderer_.render(cam_, engine_, width(), height()); }
+void BlackHoleWidget::paintGL() { m_renderer.render(m_cam, m_engine, width(), height()); }
 
 void BlackHoleWidget::mousePressEvent(QMouseEvent* e) {
     if (e->button() == Qt::LeftButton) {
-        cam_.beginDrag(e->position());
+        m_cam.beginDrag(e->position());
     }
 }
 
-void BlackHoleWidget::mouseMoveEvent(QMouseEvent* e) { cam_.drag(e->position()); }
+void BlackHoleWidget::mouseMoveEvent(QMouseEvent* e) { m_cam.drag(e->position()); }
 
 void BlackHoleWidget::mouseReleaseEvent(QMouseEvent* e) {
     if (e->button() == Qt::LeftButton) {
-        cam_.endDrag();
+        m_cam.endDrag();
     }
 }
 
 void BlackHoleWidget::wheelEvent(QWheelEvent* e) {
     const QPoint numDeg = e->angleDelta() / 120;
     if (!numDeg.isNull()) {
-        cam_.zoom(float(numDeg.y()));
+        m_cam.zoom(float(numDeg.y()));
     }
 }
 
 void BlackHoleWidget::keyPressEvent(QKeyEvent* e) {
     switch (e->key()) {
     case Qt::Key_Space:
-        paused_ = !paused_;
+        m_paused = !m_paused;
         break;
     case Qt::Key_R:
-        cam_.reset();
+        m_cam.reset();
         break;
     case Qt::Key_Escape:
         window()->close();

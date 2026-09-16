@@ -17,43 +17,43 @@ void Renderer::initialize() {
     const auto fmt = ctx->format();
     const bool verOK = (fmt.majorVersion() > 4) || (fmt.majorVersion() == 4 && fmt.minorVersion() >= 3);
     const bool hasARB = ctx->hasExtension(QByteArrayLiteral("GL_ARB_compute_shader"));
-    useCompute_ = verOK || hasARB;
+    m_useCompute = verOK || hasARB;
 
-    if (!gridProg_.addShaderFromSourceFile(QOpenGLShader::Vertex, ":/shaders/grid.vert")) qWarning() << gridProg_.log();
-    if (!gridProg_.addShaderFromSourceFile(QOpenGLShader::Fragment, ":/shaders/grid.frag")) qWarning() << gridProg_.log();
-    if (!gridProg_.link()) qWarning() << gridProg_.log();
+    if (!m_gridProg.addShaderFromSourceFile(QOpenGLShader::Vertex, ":/shaders/grid.vert")) qWarning() << m_gridProg.log();
+    if (!m_gridProg.addShaderFromSourceFile(QOpenGLShader::Fragment, ":/shaders/grid.frag")) qWarning() << m_gridProg.log();
+    if (!m_gridProg.link()) qWarning() << m_gridProg.log();
 
-    if (!quadProg_.addShaderFromSourceFile(QOpenGLShader::Vertex, ":/shaders/quad.vert")) qWarning() << quadProg_.log();
-    if (!quadProg_.addShaderFromSourceFile(QOpenGLShader::Fragment, ":/shaders/quad.frag")) qWarning() << quadProg_.log();
-    if (!quadProg_.link()) qWarning() << quadProg_.log();
+    if (!m_quadProg.addShaderFromSourceFile(QOpenGLShader::Vertex, ":/shaders/quad.vert")) qWarning() << m_quadProg.log();
+    if (!m_quadProg.addShaderFromSourceFile(QOpenGLShader::Fragment, ":/shaders/quad.frag")) qWarning() << m_quadProg.log();
+    if (!m_quadProg.link()) qWarning() << m_quadProg.log();
 
-    if (useCompute_) {
-        if (!computeProg_.addShaderFromSourceFile(QOpenGLShader::Compute, ":/shaders/geodesic.comp")) qWarning() << computeProg_.log();
-        if (!computeProg_.link()) qWarning() << computeProg_.log();
+    if (m_useCompute) {
+        if (!m_computeProg.addShaderFromSourceFile(QOpenGLShader::Compute, ":/shaders/geodesic.comp")) qWarning() << m_computeProg.log();
+        if (!m_computeProg.link()) qWarning() << m_computeProg.log();
     } else {
-        if (!lensProg_.addShaderFromSourceFile(QOpenGLShader::Vertex, ":/shaders/quad.vert")) qWarning() << lensProg_.log();
-        if (!lensProg_.addShaderFromSourceFile(QOpenGLShader::Fragment, ":/shaders/lens.frag")) qWarning() << lensProg_.log();
-        if (!lensProg_.link()) qWarning() << lensProg_.log();
-        bindUniformBlocks(lensProg_);
+        if (!m_lensProg.addShaderFromSourceFile(QOpenGLShader::Vertex, ":/shaders/quad.vert")) qWarning() << m_lensProg.log();
+        if (!m_lensProg.addShaderFromSourceFile(QOpenGLShader::Fragment, ":/shaders/lens.frag")) qWarning() << m_lensProg.log();
+        if (!m_lensProg.link()) qWarning() << m_lensProg.log();
+        bindUniformBlocks(m_lensProg);
     }
 
-    glGenBuffers(1, &cameraUBO_);
-    glBindBuffer(GL_UNIFORM_BUFFER, cameraUBO_);
+    glGenBuffers(1, &m_cameraUBO);
+    glBindBuffer(GL_UNIFORM_BUFFER, m_cameraUBO);
     glBufferData(GL_UNIFORM_BUFFER, kMat4Bytes * 3 + sizeof(QVector4D), nullptr, GL_DYNAMIC_DRAW);
-    glBindBufferBase(GL_UNIFORM_BUFFER, 1, cameraUBO_);
+    glBindBufferBase(GL_UNIFORM_BUFFER, 1, m_cameraUBO);
 
-    glGenBuffers(1, &diskUBO_);
-    glBindBuffer(GL_UNIFORM_BUFFER, diskUBO_);
+    glGenBuffers(1, &m_diskUBO);
+    glBindBuffer(GL_UNIFORM_BUFFER, m_diskUBO);
     glBufferData(GL_UNIFORM_BUFFER, sizeof(float) * 4, nullptr, GL_DYNAMIC_DRAW);
-    glBindBufferBase(GL_UNIFORM_BUFFER, 2, diskUBO_);
+    glBindBufferBase(GL_UNIFORM_BUFFER, 2, m_diskUBO);
 
-    glGenBuffers(1, &objectsUBO_);
-    glBindBuffer(GL_UNIFORM_BUFFER, objectsUBO_);
+    glGenBuffers(1, &m_objectsUBO);
+    glBindBuffer(GL_UNIFORM_BUFFER, m_objectsUBO);
     glBufferData(GL_UNIFORM_BUFFER, 4096, nullptr, GL_DYNAMIC_DRAW);
-    glBindBufferBase(GL_UNIFORM_BUFFER, 3, objectsUBO_);
+    glBindBufferBase(GL_UNIFORM_BUFFER, 3, m_objectsUBO);
 
     createQuad();
-    if (useCompute_) {
+    if (m_useCompute) {
         ensureOutputTex(kComputeW, kComputeH);
     }
 
@@ -73,24 +73,24 @@ void Renderer::bindUniformBlocks(QOpenGLShaderProgram& program) {
 }
 
 void Renderer::shutdown() {
-    if (gridEBO_) glDeleteBuffers(1, &gridEBO_), gridEBO_ = 0;
-    if (gridVBO_) glDeleteBuffers(1, &gridVBO_), gridVBO_ = 0;
-    if (gridVAO_) glDeleteVertexArrays(1, &gridVAO_), gridVAO_ = 0;
+    if (m_gridEBO) { glDeleteBuffers(1, &m_gridEBO); m_gridEBO = 0; }
+    if (m_gridVBO) { glDeleteBuffers(1, &m_gridVBO); m_gridVBO = 0; }
+    if (m_gridVAO) { glDeleteVertexArrays(1, &m_gridVAO); m_gridVAO = 0; }
 
-    if (quadEBO_) glDeleteBuffers(1, &quadEBO_), quadEBO_ = 0;
-    if (quadVBO_) glDeleteBuffers(1, &quadVBO_), quadVBO_ = 0;
-    if (quadVAO_) glDeleteVertexArrays(1, &quadVAO_), quadVAO_ = 0;
+    if (m_quadEBO) { glDeleteBuffers(1, &m_quadEBO); m_quadEBO = 0; }
+    if (m_quadVBO) { glDeleteBuffers(1, &m_quadVBO); m_quadVBO = 0; }
+    if (m_quadVAO) { glDeleteVertexArrays(1, &m_quadVAO); m_quadVAO = 0; }
 
-    if (outputTex_) glDeleteTextures(1, &outputTex_), outputTex_ = 0;
+    if (m_outputTex) { glDeleteTextures(1, &m_outputTex); m_outputTex = 0; }
 
-    if (cameraUBO_) glDeleteBuffers(1, &cameraUBO_), cameraUBO_ = 0;
-    if (diskUBO_) glDeleteBuffers(1, &diskUBO_), diskUBO_ = 0;
-    if (objectsUBO_) glDeleteBuffers(1, &objectsUBO_), objectsUBO_ = 0;
+    if (m_cameraUBO) { glDeleteBuffers(1, &m_cameraUBO); m_cameraUBO = 0; }
+    if (m_diskUBO) { glDeleteBuffers(1, &m_diskUBO); m_diskUBO = 0; }
+    if (m_objectsUBO) { glDeleteBuffers(1, &m_objectsUBO); m_objectsUBO = 0; }
 
-    if (gridProg_.isLinked()) gridProg_.removeAllShaders();
-    if (quadProg_.isLinked()) quadProg_.removeAllShaders();
-    if (computeProg_.isLinked()) computeProg_.removeAllShaders();
-    if (lensProg_.isLinked()) lensProg_.removeAllShaders();
+    if (m_gridProg.isLinked()) m_gridProg.removeAllShaders();
+    if (m_quadProg.isLinked()) m_quadProg.removeAllShaders();
+    if (m_computeProg.isLinked()) m_computeProg.removeAllShaders();
+    if (m_lensProg.isLinked()) m_lensProg.removeAllShaders();
 }
 
 void Renderer::resize(int w, int h) {
@@ -101,25 +101,25 @@ void Renderer::render(const Camera& camera, const engine::Engine& engine, int vi
     glClearColor(0, 0, 0, 1);
     glClear(GL_COLOR_BUFFER_BIT);
 
-    view_ = camera.viewMatrix();
+    m_view = camera.viewMatrix();
     const float aspect = viewportW > 0 ? float(viewportW) / float(viewportH > 0 ? viewportH : 1) : 1.0f;
-    proj_ = camera.projMatrix(aspect);
-    viewProj_ = proj_ * view_;
-    eye_ = camera.position();
+    m_proj = camera.projMatrix(aspect);
+    m_viewProj = m_proj * m_view;
+    m_eye = camera.position();
 
     uploadCameraUBO();
     uploadDiskUBO(engine.diskParams(), static_cast<float>(engine.time()));
     uploadObjectsUBO(engine.objects());
 
-    if (engine.gridVersion() != lastGridVersion_ || gridIndexCount_ == 0) {
+    if (engine.gridVersion() != m_lastGridVersion || m_gridIndexCount == 0) {
         updateGridMesh(engine.gridMesh());
-        lastGridVersion_ = engine.gridVersion();
+        m_lastGridVersion = engine.gridVersion();
     }
     drawGrid();
 
-    if (useCompute_) {
-        const int targetW = camera.moving ? kHiComputeW : kComputeW;
-        const int targetH = camera.moving ? kHiComputeH : kComputeH;
+    if (m_useCompute) {
+        const int targetW = camera.m_moving ? kHiComputeW : kComputeW;
+        const int targetH = camera.m_moving ? kHiComputeH : kComputeH;
         ensureOutputTex(targetW, targetH);
 
         dispatchCompute();
@@ -139,30 +139,30 @@ void Renderer::createQuad() {
     };
     const GLuint idx[] = {0, 1, 2, 0, 2, 3};
 
-    glGenVertexArrays(1, &quadVAO_);
-    glGenBuffers(1, &quadVBO_);
-    glGenBuffers(1, &quadEBO_);
+    glGenVertexArrays(1, &m_quadVAO);
+    glGenBuffers(1, &m_quadVBO);
+    glGenBuffers(1, &m_quadEBO);
 
-    glBindVertexArray(quadVAO_);
+    glBindVertexArray(m_quadVAO);
 
-    glBindBuffer(GL_ARRAY_BUFFER, quadVBO_);
+    glBindBuffer(GL_ARRAY_BUFFER, m_quadVBO);
     glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW);
 
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, quadEBO_);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_quadEBO);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(idx), idx, GL_STATIC_DRAW);
 
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), nullptr);
 
     glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), reinterpret_cast<void*>(2 * sizeof(float)));
 
     glBindVertexArray(0);
 }
 
 void Renderer::ensureOutputTex(int w, int h) {
-    if (!outputTex_) glGenTextures(1, &outputTex_);
-    glBindTexture(GL_TEXTURE_2D, outputTex_);
+    if (!m_outputTex) glGenTextures(1, &m_outputTex);
+    glBindTexture(GL_TEXTURE_2D, m_outputTex);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -171,24 +171,24 @@ void Renderer::ensureOutputTex(int w, int h) {
 
 void Renderer::uploadCameraUBO() {
     // layout(std140): we pack view, proj, viewProj, camPos
-    glBindBuffer(GL_UNIFORM_BUFFER, cameraUBO_);
+    glBindBuffer(GL_UNIFORM_BUFFER, m_cameraUBO);
     size_t offset = 0;
-    glBufferSubData(GL_UNIFORM_BUFFER, offset, kMat4Bytes, view_.constData()); offset += kMat4Bytes;
-    glBufferSubData(GL_UNIFORM_BUFFER, offset, kMat4Bytes, proj_.constData()); offset += kMat4Bytes;
-    glBufferSubData(GL_UNIFORM_BUFFER, offset, kMat4Bytes, viewProj_.constData()); offset += kMat4Bytes;
-    const QVector4D camPos(eye_.x(), eye_.y(), eye_.z(), 1.0f);
+    glBufferSubData(GL_UNIFORM_BUFFER, offset, kMat4Bytes, m_view.constData()); offset += kMat4Bytes;
+    glBufferSubData(GL_UNIFORM_BUFFER, offset, kMat4Bytes, m_proj.constData()); offset += kMat4Bytes;
+    glBufferSubData(GL_UNIFORM_BUFFER, offset, kMat4Bytes, m_viewProj.constData()); offset += kMat4Bytes;
+    const QVector4D camPos(m_eye.x(), m_eye.y(), m_eye.z(), 1.0f);
     glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(QVector4D), &camPos);
 }
 
 void Renderer::uploadDiskUBO(const engine::DiskParams& disk, float time) {
     const float data[4] = {disk.r1, disk.r2, disk.spin, time};
-    glBindBuffer(GL_UNIFORM_BUFFER, diskUBO_);
+    glBindBuffer(GL_UNIFORM_BUFFER, m_diskUBO);
     glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(data), data);
 }
 
 void Renderer::uploadObjectsUBO(const std::vector<engine::SceneObject>& objects) {
     // Reserved for future use (SSBO preferred); not used by compute shader now.
-    glBindBuffer(GL_UNIFORM_BUFFER, objectsUBO_);
+    glBindBuffer(GL_UNIFORM_BUFFER, m_objectsUBO);
     glBufferData(GL_UNIFORM_BUFFER, GLsizeiptr(objects.size() * sizeof(engine::SceneObject)),
                  objects.data(), GL_DYNAMIC_DRAW);
 }
@@ -196,34 +196,34 @@ void Renderer::uploadObjectsUBO(const std::vector<engine::SceneObject>& objects)
 void Renderer::updateGridMesh(const engine::GridMesh& mesh) {
     if (mesh.vertices.empty()) return;
 
-    if (!gridVAO_) glGenVertexArrays(1, &gridVAO_);
-    if (!gridVBO_) glGenBuffers(1, &gridVBO_);
-    if (!gridEBO_) glGenBuffers(1, &gridEBO_);
+    if (!m_gridVAO) glGenVertexArrays(1, &m_gridVAO);
+    if (!m_gridVBO) glGenBuffers(1, &m_gridVBO);
+    if (!m_gridEBO) glGenBuffers(1, &m_gridEBO);
 
-    glBindVertexArray(gridVAO_);
-    glBindBuffer(GL_ARRAY_BUFFER, gridVBO_);
+    glBindVertexArray(m_gridVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, m_gridVBO);
     glBufferData(GL_ARRAY_BUFFER, GLsizeiptr(mesh.vertices.size() * sizeof(QVector3D)),
                  mesh.vertices.data(), GL_DYNAMIC_DRAW);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gridEBO_);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_gridEBO);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, GLsizeiptr(mesh.indices.size() * sizeof(GLuint)),
                  mesh.indices.data(), GL_DYNAMIC_DRAW);
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(QVector3D), (void*)0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(QVector3D), nullptr);
     glBindVertexArray(0);
 
-    gridIndexCount_ = int(mesh.indices.size());
+    m_gridIndexCount = int(mesh.indices.size());
 }
 
 void Renderer::dispatchCompute() {
-    computeProg_.bind();
+    m_computeProg.bind();
 
-    glBindBufferBase(GL_UNIFORM_BUFFER, 1, cameraUBO_);
-    glBindBufferBase(GL_UNIFORM_BUFFER, 2, diskUBO_);
-    glBindBufferBase(GL_UNIFORM_BUFFER, 3, objectsUBO_);
+    glBindBufferBase(GL_UNIFORM_BUFFER, 1, m_cameraUBO);
+    glBindBufferBase(GL_UNIFORM_BUFFER, 2, m_diskUBO);
+    glBindBufferBase(GL_UNIFORM_BUFFER, 3, m_objectsUBO);
 
-    glBindImageTexture(0, outputTex_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA8);
+    glBindImageTexture(0, m_outputTex, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA8);
 
-    glBindTexture(GL_TEXTURE_2D, outputTex_);
+    glBindTexture(GL_TEXTURE_2D, m_outputTex);
     int w = 0, h = 0;
     glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &w);
     glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &h);
@@ -235,47 +235,47 @@ void Renderer::dispatchCompute() {
     glDispatchCompute(gx, gy, 1);
     glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
-    computeProg_.release();
+    m_computeProg.release();
 }
 
 void Renderer::drawGrid() {
-    gridProg_.bind();
-    const int loc = gridProg_.uniformLocation("viewProj");
-    if (loc >= 0) gridProg_.setUniformValue(loc, viewProj_);
+    m_gridProg.bind();
+    const int loc = m_gridProg.uniformLocation("viewProj");
+    if (loc >= 0) m_gridProg.setUniformValue(loc, m_viewProj);
 
-    glBindVertexArray(gridVAO_);
-    glDrawElements(GL_LINES, gridIndexCount_, GL_UNSIGNED_INT, nullptr);
+    glBindVertexArray(m_gridVAO);
+    glDrawElements(GL_LINES, m_gridIndexCount, GL_UNSIGNED_INT, nullptr);
     glBindVertexArray(0);
 
-    gridProg_.release();
+    m_gridProg.release();
 }
 
 void Renderer::drawFullscreenQuad() {
-    quadProg_.bind();
-    const int u = quadProg_.uniformLocation("uTex");
-    if (u >= 0) quadProg_.setUniformValue(u, 0);
+    m_quadProg.bind();
+    const int u = m_quadProg.uniformLocation("uTex");
+    if (u >= 0) m_quadProg.setUniformValue(u, 0);
 
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, outputTex_);
+    glBindTexture(GL_TEXTURE_2D, m_outputTex);
 
-    glBindVertexArray(quadVAO_);
+    glBindVertexArray(m_quadVAO);
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
     glBindVertexArray(0);
 
     glBindTexture(GL_TEXTURE_2D, 0);
-    quadProg_.release();
+    m_quadProg.release();
 }
 
 void Renderer::drawFullscreenLensFallback() {
-    glBindBufferBase(GL_UNIFORM_BUFFER, 1, cameraUBO_);
-    glBindBufferBase(GL_UNIFORM_BUFFER, 2, diskUBO_);
-    glBindBufferBase(GL_UNIFORM_BUFFER, 3, objectsUBO_);
+    glBindBufferBase(GL_UNIFORM_BUFFER, 1, m_cameraUBO);
+    glBindBufferBase(GL_UNIFORM_BUFFER, 2, m_diskUBO);
+    glBindBufferBase(GL_UNIFORM_BUFFER, 3, m_objectsUBO);
 
-    lensProg_.bind();
-    glBindVertexArray(quadVAO_);
+    m_lensProg.bind();
+    glBindVertexArray(m_quadVAO);
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
     glBindVertexArray(0);
-    lensProg_.release();
+    m_lensProg.release();
 }
 
 } // namespace renderer
