@@ -12,8 +12,11 @@ add_executable(blackhole_exe
         src/main.cpp
         src/blackhole_widget.h
         src/blackhole_widget.cpp
+        src/camera.h
+        src/scene.h
+        src/renderer.h
+        src/renderer.cpp
         src/resources.qrc
-        src/blackhole_widget.h
 )
 
 target_link_libraries(blackhole_exe PRIVATE

@@ -1,8 +1,8 @@
-#version 430 core
+#version 410 core
 out vec4 FragColor;
 
 // Camera UBO (std140)
-layout(std140, binding = 1) uniform CameraBlock {
+layout(std140) uniform CameraBlock {
     mat4 uView;
     mat4 uProj;
     mat4 uViewProj;
@@ -10,7 +10,7 @@ layout(std140, binding = 1) uniform CameraBlock {
 };
 
 // Disk parameters (r1, r2, density, pad)
-layout(std140, binding = 2) uniform DiskBlock {
+layout(std140) uniform DiskBlock {
     vec4 uDisk; // x=r1, y=r2, z=density
 };
 

@@ -1,0 +1,26 @@
+{
+  "name": "@manoj-malviya-96/blackhole",
+  "version": "0.1.0",
+  "description": "Black hole gravitational lensing visualizer built with Qt6 and OpenGL",
+  "type": "module",
+  "bin": {
+    "blackhole": "./bin/blackhole.js"
+  },
+  "files": [
+    "bin",
+    "dist/blackhole-macos.zip"
+  ],
+  "scripts": {
+    "dev": "./scripts/run.sh debug",
+    "build": "cmake --preset release && cmake --build --preset release",
+    "package": "./scripts/package.sh"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/manoj-malviya-96/blackhole.git"
+  },
+  "license": "CC0-1.0"
+}
