@@ -1,26 +1,35 @@
 {
-  "name": "@manoj-malviya-96/blackhole",
-  "version": "0.1.0",
-  "description": "Black hole gravitational lensing visualizer built with Qt6 and OpenGL",
-  "type": "module",
-  "bin": {
-    "blackhole": "./bin/blackhole.js"
-  },
-  "files": [
-    "bin",
-    "dist/blackhole-macos.zip"
-  ],
-  "scripts": {
-    "dev": "./scripts/run.sh debug",
-    "build": "cmake --preset release && cmake --build --preset release",
-    "package": "./scripts/package.sh"
-  },
-  "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/manoj-malviya-96/blackhole.git"
-  },
-  "license": "CC0-1.0"
+    "name": "@manoj-malviya-96/blackhole",
+    "version": "0.1.0",
+    "description": "Black hole gravitational lensing visualizer built with Qt6 and OpenGL",
+    "type": "module",
+    "bin": {
+        "blackhole": "./bin/blackhole.js"
+    },
+    "files": [
+        "bin",
+        "dist/blackhole-macos.zip"
+    ],
+    "scripts": {
+        "dev": "./scripts/run.sh debug",
+        "start": "./scripts/run.sh release",
+        "run:debug": "./scripts/run.sh debug",
+        "run:release": "./scripts/run.sh release",
+        "build": "npm run build:release",
+        "build:debug": "cmake --preset debug && cmake --build --preset debug",
+        "build:release": "cmake --preset release && cmake --build --preset release",
+        "configure:debug": "cmake --preset debug",
+        "configure:release": "cmake --preset release",
+        "package": "./scripts/package.sh",
+        "clean": "sh -c 'cmake --build --preset debug --target clean 2>/dev/null || true; cmake --build --preset release --target clean 2>/dev/null || true'",
+        "clean:all": "rm -rf build dist"
+    },
+    "publishConfig": {
+        "registry": "https://npm.pkg.github.com"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/manoj-malviya-96/blackhole.git"
+    },
+    "license": "CC0-1.0"
 }

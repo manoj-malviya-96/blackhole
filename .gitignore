@@ -39,19 +39,6 @@
 
 # debug information files
 *.dwo
-<<<<<<< HEAD
-Makefile
-CMakeCache.txt
-cmake_install.cmake
-cmake_install.cmake/*
-cmake-build-debug/*
-blackhole_exe_autogen/
-CMakeFiles/
-.qt/
-.zed/
-compile_commands.json
-=======
-
 # Build & Tooling
 build/
 cmake-build-*/
@@ -60,8 +47,10 @@ CMakeFiles/
 cmake_install.cmake
 Makefile
 .qt/
+.zed/
 *.autogen/
 *_autogen/
+compile_commands.json
 
 # Node & Package distribution
 node_modules/
@@ -72,3 +61,4 @@ dist/
 .DS_Store
 .idea/
 .vscode/
+
