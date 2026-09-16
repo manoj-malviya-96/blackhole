@@ -1,0 +1,21 @@
+name: CI
+
+on:
+  push:
+    branches: [master, "feat/*", "refactor/*"]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt
+        run: brew install qt
+
+      - name: Configure CMake
+        run: cmake --preset debug
+
+      - name: Build
+        run: cmake --build --preset debug
