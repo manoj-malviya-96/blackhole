@@ -2,8 +2,8 @@
 #include <QOpenGLWidget>
 #include <QTimer>
 #include <vector>
-#include "camera.h"
-#include "renderer.h"
+#include "renderer/camera.h"
+#include "renderer/renderer.h"
 #include "scene.h"
 
 // Thin Qt widget: owns the scene/camera state and forwards Qt lifecycle

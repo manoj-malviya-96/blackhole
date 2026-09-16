@@ -13,12 +13,14 @@ add_executable(blackhole_exe
         src/main.cpp
         src/blackhole_widget.h
         src/blackhole_widget.cpp
-        src/camera.h
+        src/renderer/camera.h
+        src/renderer/renderer.h
+        src/renderer/renderer.cpp
         src/scene.h
-        src/renderer.h
-        src/renderer.cpp
         src/resources.qrc
 )
+
+target_include_directories(blackhole_exe PRIVATE src)
 
 target_link_libraries(blackhole_exe PRIVATE
         Qt6::Widgets
