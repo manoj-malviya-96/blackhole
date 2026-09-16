@@ -1,6 +1,6 @@
 #pragma once
 #include <QOpenGLWidget>
-#include <QOpenGLFunctions_4_3_Core>
+#include <QOpenGLExtraFunctions>
 #include <QOpenGLShaderProgram>
 #include <QMatrix4x4>
 #include <QVector>
@@ -8,7 +8,7 @@
 #include <QImage>
 #include <vector>
 
-class BlackHoleWidget : public QOpenGLWidget, protected QOpenGLFunctions_4_3_Core {
+class BlackHoleWidget : public QOpenGLWidget, protected QOpenGLExtraFunctions {
     Q_OBJECT
 public:
     explicit BlackHoleWidget(QWidget* parent = nullptr);
@@ -46,7 +46,7 @@ private:
         float minRadius = 1e10f;
         float maxRadius = 1e12f;
         float azimuth   = 0.0f;
-        float elevation = 1.57079632679f; // ~pi/2
+        float elevation = 1.0f; // tilted view - edge-on (~pi/2) puts the camera in the disk plane, hiding it
         float orbitSpeed = 0.01f;
         double zoomSpeed = 2.5e10;
 
