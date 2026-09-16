@@ -5,6 +5,8 @@
 #include <algorithm>
 #include <cmath>
 
+namespace renderer {
+
 // Orbit camera: azimuth/elevation around a fixed target, radius-based zoom.
 class Camera {
 public:
@@ -78,3 +80,5 @@ private:
     static constexpr float kMaxElevation = 3.1315926535f;
     QPointF lastPos{};
 };
+
+} // namespace renderer
