@@ -19,7 +19,6 @@ add_executable(blackhole_exe
         src/renderer/camera.h
         src/renderer/renderer.h
         src/renderer/renderer.cpp
-        src/scene.h
         src/resources.qrc
 )
 

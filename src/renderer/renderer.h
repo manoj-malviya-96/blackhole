@@ -2,10 +2,11 @@
 #include <QOpenGLExtraFunctions>
 #include <QOpenGLShaderProgram>
 #include <QMatrix4x4>
-#include <QElapsedTimer>
 #include <vector>
-#include "camera.h"
-#include "scene.h"
+#include "engine/engine.h"
+#include "renderer/camera.h"
+
+namespace renderer {
 
 // Owns all GL resources (shaders, buffers, textures) and issues draw calls.
 // Requires a current QOpenGLContext for initialize()/resize()/render()/shutdown().
@@ -14,15 +15,15 @@ public:
     void initialize();
     void shutdown();
     void resize(int w, int h);
-    void render(const Camera& camera, const std::vector<SceneObject>& objects, int viewportW, int viewportH);
+    void render(const Camera& camera, const engine::Engine& engine, int viewportW, int viewportH);
 
 private:
     void createQuad();
     void ensureOutputTex(int w, int h);
-    void rebuildGrid(const std::vector<SceneObject>& objects);
+    void updateGridMesh(const engine::GridMesh& mesh);
     void uploadCameraUBO();
-    void uploadDiskUBO(const std::vector<SceneObject>& objects);
-    void uploadObjectsUBO(const std::vector<SceneObject>& objects);
+    void uploadDiskUBO(const engine::DiskParams& disk, float time);
+    void uploadObjectsUBO(const std::vector<engine::SceneObject>& objects);
     void dispatchCompute();
     void drawGrid();
     void drawFullscreenQuad();
@@ -51,6 +52,7 @@ private:
     GLuint gridVBO_ = 0;
     GLuint gridEBO_ = 0;
     int gridIndexCount_ = 0;
+    uint64_t lastGridVersion_ = 0;
 
     // Matrices (recomputed each frame in render())
     QMatrix4x4 view_;
@@ -63,8 +65,6 @@ private:
     static constexpr int kComputeH = 150;
     static constexpr int kHiComputeW = 640;
     static constexpr int kHiComputeH = 360;
-    static constexpr int kGridSize = 25;
-    static constexpr float kGridSpacing = 1e10f;
 
     // QMatrix4x4's sizeof() is larger than 64 (it carries an internal flagBits
     // optimization flag alongside the 16 floats), so it must never be used to
@@ -72,5 +72,6 @@ private:
     static constexpr size_t kMat4Bytes = 16 * sizeof(float);
 
     bool useCompute_ = true;
-    QElapsedTimer clock_;
 };
+
+} // namespace renderer

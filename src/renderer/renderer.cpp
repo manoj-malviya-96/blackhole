@@ -1,12 +1,13 @@
-#include "renderer.h"
+#include "renderer/renderer.h"
 #include <QOpenGLContext>
 #include <QDebug>
-#include <cmath>
 
 // Guard for headers that don't define this (e.g., macOS < 4.2 headers)
 #ifndef GL_SHADER_IMAGE_ACCESS_BARRIER_BIT
 #define GL_SHADER_IMAGE_ACCESS_BARRIER_BIT 0x00000020
 #endif
+
+namespace renderer {
 
 void Renderer::initialize() {
     initializeOpenGLFunctions();
@@ -56,8 +57,6 @@ void Renderer::initialize() {
         ensureOutputTex(kComputeW, kComputeH);
     }
 
-    clock_.start();
-
     glDisable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -98,7 +97,7 @@ void Renderer::resize(int w, int h) {
     glViewport(0, 0, w, h);
 }
 
-void Renderer::render(const Camera& camera, const std::vector<SceneObject>& objects, int viewportW, int viewportH) {
+void Renderer::render(const Camera& camera, const engine::Engine& engine, int viewportW, int viewportH) {
     glClearColor(0, 0, 0, 1);
     glClear(GL_COLOR_BUFFER_BIT);
 
@@ -109,10 +108,13 @@ void Renderer::render(const Camera& camera, const std::vector<SceneObject>& obje
     eye_ = camera.position();
 
     uploadCameraUBO();
-    uploadDiskUBO(objects);
-    uploadObjectsUBO(objects);
+    uploadDiskUBO(engine.diskParams(), static_cast<float>(engine.time()));
+    uploadObjectsUBO(engine.objects());
 
-    rebuildGrid(objects);
+    if (engine.gridVersion() != lastGridVersion_ || gridIndexCount_ == 0) {
+        updateGridMesh(engine.gridMesh());
+        lastGridVersion_ = engine.gridVersion();
+    }
     drawGrid();
 
     if (useCompute_) {
@@ -178,66 +180,21 @@ void Renderer::uploadCameraUBO() {
     glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(QVector4D), &camPos);
 }
 
-void Renderer::uploadDiskUBO(const std::vector<SceneObject>& objects) {
-    // r1, r2 from Schwarzschild radius of primary object.
-    const double r_s = physics::schwarzschildRadius(objects.front().mass);
-    const float r1 = float(2.2 * r_s);
-    const float r2 = float(11.0 * r_s);
-    const float spin = float(objects.front().spin);
-    const float time = float(clock_.elapsed()) / 1000.0f;
-    const float data[4] = {r1, r2, spin, time};
-
+void Renderer::uploadDiskUBO(const engine::DiskParams& disk, float time) {
+    const float data[4] = {disk.r1, disk.r2, disk.spin, time};
     glBindBuffer(GL_UNIFORM_BUFFER, diskUBO_);
     glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(data), data);
 }
 
-void Renderer::uploadObjectsUBO(const std::vector<SceneObject>& objects) {
+void Renderer::uploadObjectsUBO(const std::vector<engine::SceneObject>& objects) {
     // Reserved for future use (SSBO preferred); not used by compute shader now.
     glBindBuffer(GL_UNIFORM_BUFFER, objectsUBO_);
-    glBufferData(GL_UNIFORM_BUFFER, GLsizeiptr(objects.size() * sizeof(SceneObject)),
+    glBufferData(GL_UNIFORM_BUFFER, GLsizeiptr(objects.size() * sizeof(engine::SceneObject)),
                  objects.data(), GL_DYNAMIC_DRAW);
 }
 
-void Renderer::rebuildGrid(const std::vector<SceneObject>& objects) {
-    // CPU grid generation with Schwarzschild-like warp
-    std::vector<QVector3D> vertices;
-    std::vector<GLuint> indices;
-    vertices.reserve((kGridSize + 1) * (kGridSize + 1));
-    indices.reserve(kGridSize * kGridSize * 4);
-
-    for (int z = 0; z <= kGridSize; ++z) {
-        for (int x = 0; x <= kGridSize; ++x) {
-            const float worldX = (x - kGridSize / 2) * kGridSpacing;
-            const float worldZ = (z - kGridSize / 2) * kGridSpacing;
-            float y = 0.f;
-
-            for (const auto& obj : objects) {
-                const double r_s = physics::schwarzschildRadius(obj.mass);
-                const double dx = double(worldX) - double(obj.posRadius.x());
-                const double dz = double(worldZ) - double(obj.posRadius.z());
-                const double dist = std::sqrt(dx * dx + dz * dz);
-
-                if (dist > r_s) {
-                    const double deltaY = 2.0 * std::sqrt(r_s * (dist - r_s));
-                    y += float(deltaY) - 3e10f;
-                } else {
-                    y += 2.0f * float(r_s) - 3e10f;
-                }
-            }
-            vertices.emplace_back(worldX, y, worldZ);
-        }
-    }
-
-    for (int z = 0; z < kGridSize; ++z) {
-        for (int x = 0; x < kGridSize; ++x) {
-            const int i = z * (kGridSize + 1) + x;
-            indices.push_back(i);
-            indices.push_back(i + 1);
-
-            indices.push_back(i);
-            indices.push_back(i + kGridSize + 1);
-        }
-    }
+void Renderer::updateGridMesh(const engine::GridMesh& mesh) {
+    if (mesh.vertices.empty()) return;
 
     if (!gridVAO_) glGenVertexArrays(1, &gridVAO_);
     if (!gridVBO_) glGenBuffers(1, &gridVBO_);
@@ -245,16 +202,16 @@ void Renderer::rebuildGrid(const std::vector<SceneObject>& objects) {
 
     glBindVertexArray(gridVAO_);
     glBindBuffer(GL_ARRAY_BUFFER, gridVBO_);
-    glBufferData(GL_ARRAY_BUFFER, GLsizeiptr(vertices.size() * sizeof(QVector3D)),
-                 vertices.data(), GL_DYNAMIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, GLsizeiptr(mesh.vertices.size() * sizeof(QVector3D)),
+                 mesh.vertices.data(), GL_DYNAMIC_DRAW);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gridEBO_);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, GLsizeiptr(indices.size() * sizeof(GLuint)),
-                 indices.data(), GL_DYNAMIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, GLsizeiptr(mesh.indices.size() * sizeof(GLuint)),
+                 mesh.indices.data(), GL_DYNAMIC_DRAW);
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(QVector3D), (void*)0);
     glBindVertexArray(0);
 
-    gridIndexCount_ = int(indices.size());
+    gridIndexCount_ = int(mesh.indices.size());
 }
 
 void Renderer::dispatchCompute() {
@@ -320,3 +277,5 @@ void Renderer::drawFullscreenLensFallback() {
     glBindVertexArray(0);
     lensProg_.release();
 }
+
+} // namespace renderer

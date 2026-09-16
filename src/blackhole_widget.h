@@ -1,13 +1,12 @@
 #pragma once
 #include <QOpenGLWidget>
 #include <QTimer>
-#include <vector>
+#include "engine/engine.h"
 #include "renderer/camera.h"
 #include "renderer/renderer.h"
-#include "scene.h"
 
-// Thin Qt widget: owns the scene/camera state and forwards Qt lifecycle
-// and input events to Renderer/Camera. No raw GL calls live here.
+// Thin Qt widget: owns the engine and camera, forwards Qt lifecycle
+// and input events to Renderer/Camera/Engine. No raw GL calls live here.
 class BlackHoleWidget : public QOpenGLWidget {
     Q_OBJECT
 public:
@@ -29,9 +28,9 @@ protected:
     void keyPressEvent(QKeyEvent*) override;
 
 private:
-    Renderer renderer_;
-    Camera cam_;
-    std::vector<SceneObject> objects_;
+    engine::Engine engine_;
+    renderer::Camera cam_;
+    renderer::Renderer renderer_;
 
     QTimer timer_;
     bool paused_ = false;

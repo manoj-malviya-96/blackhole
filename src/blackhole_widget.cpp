@@ -6,18 +6,9 @@
 BlackHoleWidget::BlackHoleWidget(QWidget* parent) : QOpenGLWidget(parent) {
     setFocusPolicy(Qt::StrongFocus);
 
-    // Single BH at origin (mass ~ 4.3e6 solar masses)
-    objects_.push_back({
-        QVector4D(0, 0, 0, 5e10f),   // pos + radius
-        QVector4D(1, 1, 1, 1),       // color
-        4.3e6 * physics::kSolarMass, // mass
-        QVector3D(0, 0, 0),          // velocity (unused)
-        0.9                          // spin (a/M) - near-extremal, for a visible frame-drag swirl
-    });
-
     connect(&timer_, &QTimer::timeout, this, [this]() {
         if (!paused_) {
-            // future dynamics here (object movement, etc.)
+            engine_.step(0.016);
         }
         update();
     });
@@ -34,7 +25,7 @@ void BlackHoleWidget::initializeGL() { renderer_.initialize(); }
 
 void BlackHoleWidget::resizeGL(int w, int h) { renderer_.resize(w, h); }
 
-void BlackHoleWidget::paintGL() { renderer_.render(cam_, objects_, width(), height()); }
+void BlackHoleWidget::paintGL() { renderer_.render(cam_, engine_, width(), height()); }
 
 void BlackHoleWidget::mousePressEvent(QMouseEvent* e) {
     if (e->button() == Qt::LeftButton) {
