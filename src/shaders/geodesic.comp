@@ -11,14 +11,14 @@ layout(std140, binding = 1) uniform CameraBlock {
     vec4 uCamPos;
 };
 
-// Disk parameters (r1, r2, density, pad)
+// Disk parameters
 layout(std140, binding = 2) uniform DiskBlock {
-    vec4 uDisk; // x=r1, y=r2, z=density
+    vec4 uDisk; // x=r1, y=r2, z=spin (a/M), w=time (seconds)
 };
 
 // Objects (reserved; not used here)
 layout(std140, binding = 3) uniform ObjectsBlock {
-// struct layout placeholder – prefer SSBO for real scenes
+    // struct layout placeholder – prefer SSBO for real scenes
 } objs;
 
 float hash21(vec2 p) {
@@ -49,32 +49,46 @@ float fbm(vec2 p) {
     return v;
 }
 
-vec3 starField(vec3 dir) {
+vec3 starField(vec3 dir, float uTime) {
     vec2 uv = vec2(atan(dir.z, dir.x), acos(clamp(dir.y, -1.0, 1.0)));
     vec2 grid = uv * 80.0;
     vec2 cell = floor(grid);
     vec2 f = fract(grid) - 0.5;
     float h = hash21(cell);
-    float star = 0.0;
+    vec3 star = vec3(0.0);
     if (h > 0.988) {
         float d = length(f);
         float brightness = 0.4 + 0.6 * hash21(cell + 3.7);
-        star = smoothstep(0.45, 0.0, d) * brightness;
+        brightness *= 0.75 + 0.25 * sin(uTime * (0.5 + hash21(cell + 9.1)) + h * 20.0);
+        vec3 tint = mix(vec3(0.65, 0.75, 1.0), vec3(1.0, 0.9, 0.7), hash21(cell + 5.2));
+        star = tint * smoothstep(0.45, 0.0, d) * brightness;
     }
-    return vec3(star);
+    return star;
 }
 
-vec3 shadeDisk(vec3 p, float R, float r1, float r2, float rs, float minR) {
+// Cheap non-volumetric nebula: a drifting fbm haze wrapped around the sky
+// direction, standing in for wispy gas clouds without a full raymarch.
+vec3 gasCloud(vec3 dir, float uTime) {
+    vec2 uv = vec2(atan(dir.z, dir.x), dir.y);
+    float n = fbm(uv * 2.5 + vec2(uTime * 0.015, uTime * 0.01));
+    float density = smoothstep(0.45, 0.85, n);
+    return vec3(0.30, 0.40, 0.62) * density * 0.30;
+}
+
+vec3 shadeDisk(vec3 p, float R, float r1, float r2, float rs, float minR, float twist, float uTime) {
     float t = clamp((R - r1) / max(r2 - r1, 1e-6), 0.0, 1.0);
 
     vec3 hot = vec3(1.0, 0.92, 0.78);
     vec3 cool = vec3(0.75, 0.28, 0.06);
     vec3 base = mix(hot, cool, t);
 
-    // Differential-rotation shear gives the turbulent flow its spiral streaks.
-    float ang = atan(p.z, p.x);
-    float shear = ang * 2.0 - 5.0 * (r1 / max(R, 1e-6));
-    float turb = fbm(vec2(shear * 1.6, R / (r2 - r1) * 6.0));
+    // Differential (Keplerian-ish) rotation: inner gas both winds tighter and
+    // orbits faster, so the shear phase advances with time and spin twist.
+    float ang = atan(p.z, p.x) + twist;
+    float omega = 1.2 * pow(r1 / max(R, r1), 1.5);
+    float phase = ang - omega * uTime;
+    float shear = phase * 2.0 - 5.0 * (r1 / max(R, 1e-6));
+    float turb = fbm(vec2(shear * 1.6, R / (r2 - r1) * 6.0 - uTime * 0.05));
     base *= 0.75 + 0.5 * turb;
 
     float innerGlow = 1.0 - smoothstep(0.0, 0.3, t);
@@ -93,7 +107,13 @@ vec3 shadeDisk(vec3 p, float R, float r1, float r2, float rs, float minR) {
 // Integrates the Schwarzschild null-geodesic orbit equation d2u/dphi2 + u = 1.5*rs*u^2
 // (u = 1/r) via RK4, walking the ray's invariant orbital plane and checking for
 // horizon capture / disk-plane crossings / escape at each angular step.
-vec3 traceGeodesic(vec3 ro, vec3 rd, float rs, float r1, float r2) {
+//
+// `spin` adds a stylized frame-drag: it twists the resolved hit point around the
+// world Y (spin) axis by an angle that grows the closer the ray passes to the
+// horizon. This is NOT the exact Kerr metric (which requires the Carter constant
+// and generally non-planar photon paths) - it's a cheap approximation that gives
+// a visually convincing "spinning black hole drags light around it" swirl.
+vec3 traceGeodesic(vec3 ro, vec3 rd, float rs, float r1, float r2, float spin, float uTime) {
     float r0 = length(ro);
     vec3 e1 = ro / r0;
     vec3 nrm = cross(ro, rd);
@@ -102,7 +122,7 @@ vec3 traceGeodesic(vec3 ro, vec3 rd, float rs, float r1, float r2) {
     if (sinTheta < 1e-4) {
         // Zero angular momentum: photon travels radially, no deflection.
         float a = dot(rd, e1);
-        return a < 0.0 ? vec3(0.0) : starField(rd);
+        return a < 0.0 ? vec3(0.0) : (starField(rd, uTime) + gasCloud(rd, uTime));
     }
 
     vec3 n = nrm / (r0 * sinTheta);
@@ -118,11 +138,14 @@ vec3 traceGeodesic(vec3 ro, vec3 rd, float rs, float r1, float r2) {
     const int STEPS = 220;
     const float cosD = cos(dphi);
     const float sinD = sin(dphi);
+    float spinLen = spin * rs * 0.5; // a = (a/M)*M, with M = rs/2
+    const float dragGain = 4.0;      // tuned for visual effect, not exact GR
 
     float cosPhi = 1.0;
     float sinPhi = 0.0;
     vec3 prevPos = ro;
     float minR = r0;
+    float twist = 0.0;
     float escapeR = r2 * 60.0;
 
     for (int i = 0; i < STEPS; ++i) {
@@ -142,7 +165,7 @@ vec3 traceGeodesic(vec3 ro, vec3 rd, float rs, float r1, float r2) {
         v += (dphi / 6.0) * (k1v + 2.0 * k2v + 2.0 * k3v + k4v);
 
         if (u <= 0.0) {
-            return starField(normalize(prevPos));
+            return starField(normalize(prevPos), uTime) + gasCloud(normalize(prevPos), uTime);
         }
 
         float newCos = cosPhi * cosD - sinPhi * sinD;
@@ -152,9 +175,16 @@ vec3 traceGeodesic(vec3 ro, vec3 rd, float rs, float r1, float r2) {
 
         float r = 1.0 / u;
         minR = min(minR, r);
+        twist += dragGain * spinLen * rs / (r * r * r) * dphi;
 
         if (r <= rs) {
-            return vec3(0.0);
+            // Decorative-only shimmer at the silhouette edge (a nod to Hawking
+            // radiation, not a physically visible effect at this mass scale).
+            float phiAngle = atan(sinPhi, cosPhi);
+            float edge = 1.0 - clamp((rs - r) / (rs * 0.2), 0.0, 1.0);
+            float flicker = hash21(vec2(floor(phiAngle * 40.0), floor(uTime * 3.0)));
+            float sparkle = step(0.965, flicker) * edge;
+            return vec3(0.6, 0.75, 1.0) * sparkle * 0.8;
         }
 
         vec3 pos = r * (cosPhi * e1 + sinPhi * e2);
@@ -164,12 +194,13 @@ vec3 traceGeodesic(vec3 ro, vec3 rd, float rs, float r1, float r2) {
             vec3 pHit = mix(prevPos, pos, tt);
             float R = length(pHit.xz);
             if (R >= r1 && R <= r2) {
-                return shadeDisk(pHit, R, r1, r2, rs, minR);
+                return shadeDisk(pHit, R, r1, r2, rs, minR, twist, uTime);
             }
         }
 
         if (r > escapeR) {
-            vec3 esc = starField(normalize(pos));
+            vec3 dir = normalize(pos);
+            vec3 esc = starField(dir, uTime) + gasCloud(dir, uTime);
             float photonGlow = smoothstep(2.2 * rs, 1.02 * rs, minR);
             return esc + photonGlow * vec3(1.0, 0.97, 0.92) * 1.1;
         }
@@ -182,10 +213,10 @@ vec3 traceGeodesic(vec3 ro, vec3 rd, float rs, float r1, float r2) {
 }
 
 void main() {
-    ivec2 gid  = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 gid = ivec2(gl_GlobalInvocationID.xy);
     ivec2 size = imageSize(uOut);
 
-    vec2 uv  = (vec2(gid) + 0.5) / vec2(size);
+    vec2 uv = (vec2(gid) + 0.5) / vec2(size);
     vec2 ndc = uv * 2.0 - 1.0;
 
     // Reconstruct world ray from camera matrices
@@ -201,8 +232,10 @@ void main() {
     float r1 = uDisk.x;
     float r2 = uDisk.y;
     float rs = r1 / 2.2;
+    float spin = uDisk.z;
+    float uTime = uDisk.w;
 
-    vec3 col = traceGeodesic(ro, rd, rs, r1, r2);
+    vec3 col = traceGeodesic(ro, rd, rs, r1, r2, spin, uTime);
 
     col = col / (1.0 + col); // filmic tonemap so glows roll off instead of clipping
     float vig = smoothstep(1.4, 0.2, length(ndc));
