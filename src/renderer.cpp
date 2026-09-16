@@ -182,7 +182,7 @@ void Renderer::uploadDiskUBO(const std::vector<SceneObject>& objects) {
     // r1, r2 from Schwarzschild radius of primary object.
     const double r_s = physics::schwarzschildRadius(objects.front().mass);
     const float r1 = float(2.2 * r_s);
-    const float r2 = float(5.2 * r_s);
+    const float r2 = float(11.0 * r_s);
     const float spin = float(objects.front().spin);
     const float time = float(clock_.elapsed()) / 1000.0f;
     const float data[4] = {r1, r2, spin, time};
