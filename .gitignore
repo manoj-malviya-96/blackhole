@@ -41,9 +41,12 @@
 *.dwo
 Makefile
 CMakeCache.txt
+cmake_install.cmake
 cmake_install.cmake/*
 cmake-build-debug/*
 blackhole_exe_autogen/
 CMakeFiles/
 .qt/
 .zed/
+compile_commands.json
+
