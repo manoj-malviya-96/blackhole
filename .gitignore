@@ -39,3 +39,11 @@
 
 # debug information files
 *.dwo
+Makefile
+CMakeCache.txt
+cmake_install.cmake/*
+cmake-build-debug/*
+blackhole_exe_autogen/
+CMakeFiles/
+.qt/
+.zed/
